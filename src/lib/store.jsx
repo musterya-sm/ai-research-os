@@ -1,6 +1,7 @@
-import { createContext, useContext, useEffect, useMemo, useReducer } from 'react'
+import { createContext, useContext, useEffect, useMemo, useReducer, useRef } from 'react'
 import { SEED_PAPERS } from '../data/seed.js'
 import { buildIndex } from './nlp.js'
+import { SHARED, startEngine, schedulePush, getAuth, useSync } from './sync.js'
 
 const KEY = 'ai-research-os/v1'
 const uid = () => Math.random().toString(36).slice(2, 9)
@@ -32,6 +33,8 @@ const initial = () => ({
   // Highlights from the PDF reader plus manual entries. kind: important | idea | question | term.
   // Terms form the dictionary; box/due drive Leitner-style flashcard review.
   highlights: [],
+  drafts: [], // Writing Studio drafts
+  review: { streak: 0, last: '', log: {} }, // daily flashcard streak; log = { 'YYYY-MM-DD': cards }
   chat: [],
   members: [
     { id: 'me', name: 'Arjun', role: 'Owner', you: true },
@@ -43,8 +46,35 @@ const initial = () => ({
     { id: uid(), who: 'Rahul', text: 'commented on MemGPT paper', at: Date.now() - 5 * 36e5 },
     { id: uid(), who: 'Arjun', text: 'created a new hypothesis', at: Date.now() - 864e5 },
   ],
-  settings: { name: 'Arjun', email: '', autoSummarize: true, autoCluster: true, gapAlerts: true, weeklyDigest: false, darkMode: false, defaultView: 'canvas', apiKey: '', model: 'claude-sonnet-5-5', notifyEmail: true, notifyApp: true, shareAnalytics: false },
+  settings: { name: 'Arjun', email: '', autoSummarize: true, autoCluster: true, gapAlerts: true, weeklyDigest: false, darkMode: false, defaultView: 'canvas', apiKey: '', model: 'claude-sonnet-5-5', notifyEmail: true, notifyApp: true, shareAnalytics: false, reminder: true, reminderTime: '09:00', zoteroUser: '', zoteroKey: '', s2Key: '' },
 })
+
+const str = v => (typeof v === 'string' ? v : '')
+const arr = v => (Array.isArray(v) ? v : [])
+export const dayKey = (t = Date.now()) => new Date(t).toLocaleDateString('en-CA')
+
+// Coerces the shared parts of a workspace (from a file or a sync server) to the shapes the app expects.
+export function sanitizeDoc(d) {
+  const papers = arr(d.papers).filter(p => p && typeof p.id === 'string' && typeof p.title === 'string').map(p => ({
+    ...p, arxiv: str(p.arxiv) || p.id, abstract: str(p.abstract), method: str(p.method), dataset: str(p.dataset), finding: str(p.finding), limitation: str(p.limitation), venue: str(p.venue),
+    year: Number(p.year) || 0, citations: Number(p.citations) || 0,
+    authors: arr(p.authors).map(String), tags: arr(p.tags).map(String),
+    status: ['toread', 'reading', 'done'].includes(p.status) ? p.status : undefined,
+  }))
+  const highlights = arr(d.highlights).filter(h => h && typeof h.id === 'string').map(h => ({
+    ...h, text: str(h.text), note: str(h.note), term: str(h.term), definition: str(h.definition), kind: ['important', 'idea', 'question', 'term'].includes(h.kind) ? h.kind : 'important',
+    page: Number(h.page) || 0, box: Number(h.box) || 0, due: Number(h.due) || Date.now(), createdAt: Number(h.createdAt) || Date.now(),
+    tags: arr(h.tags).map(String), rects: arr(h.rects).filter(r => r && [r.x, r.y, r.w, r.h].every(Number.isFinite)),
+  }))
+  const out = { papers, highlights }
+  if ('collections' in d) out.collections = arr(d.collections).filter(c => c && typeof c.id === 'string').map(c => ({ id: c.id, name: str(c.name), paperIds: arr(c.paperIds).map(String) }))
+  if ('drafts' in d) out.drafts = arr(d.drafts).filter(x => x && typeof x.id === 'string').map(x => ({ ...x, title: str(x.title), body: str(x.body) }))
+  if ('hypotheses' in d) out.hypotheses = arr(d.hypotheses).filter(x => x && typeof x.id === 'string')
+  if ('activity' in d) out.activity = arr(d.activity).filter(x => x && typeof x.id === 'string').map(x => ({ ...x, who: str(x.who) || '?', text: str(x.text), at: Number(x.at) || 0 }))
+  if (d.notes && typeof d.notes === 'object') out.notes = Object.fromEntries(Object.entries(d.notes).map(([k, v]) => [k, str(v)]))
+  if (d.canvas && typeof d.canvas === 'object') out.canvas = { nodes: arr(d.canvas.nodes).filter(n => n && typeof n.id === 'string' && Number.isFinite(n.x) && Number.isFinite(n.y)), edges: arr(d.canvas.edges).filter(e => e && typeof e.from === 'string') }
+  return out
+}
 
 function reducer(s, a) {
   const log = text => [{ id: uid(), who: s.settings.name || 'You', text, at: Date.now() }, ...s.activity].slice(0, 50)
@@ -58,6 +88,15 @@ function reducer(s, a) {
     case 'toggleStar': return { ...s, papers: s.papers.map(p => p.id === a.id ? { ...p, starred: !p.starred } : p) }
     case 'viewPaper': return { ...s, recent: [a.id, ...s.recent.filter(id => id !== a.id)].slice(0, 12) }
     case 'addCollection': return { ...s, collections: [...s.collections, { id: uid(), name: a.name, paperIds: [] }], activity: log(`created collection “${a.name}”`) }
+    // Imported collections (e.g. from Zotero) merge into an existing collection with the same name.
+    case 'upsertCollections': {
+      let cs = [...s.collections]
+      for (const c of a.collections) {
+        const ex = cs.find(x => x.name === c.name)
+        cs = ex ? cs.map(x => x === ex ? { ...x, paperIds: [...new Set([...x.paperIds, ...c.paperIds])] } : x) : [...cs, { id: uid(), name: c.name, paperIds: c.paperIds }]
+      }
+      return { ...s, collections: cs }
+    }
     case 'deleteCollection': return { ...s, collections: s.collections.filter(c => c.id !== a.id) }
     case 'toggleInCollection': return { ...s, collections: s.collections.map(c => c.id !== a.collectionId ? c : { ...c, paperIds: c.paperIds.includes(a.paperId) ? c.paperIds.filter(x => x !== a.paperId) : [...c.paperIds, a.paperId] }) }
     case 'setNote': return { ...s, notes: { ...s.notes, [a.id]: a.text } }
@@ -77,12 +116,24 @@ function reducer(s, a) {
     case 'reviewHighlight': {
       // Leitner boxes: remembered → next box (1, 3, 7, 16, 35 days); forgot → back to box 0, due now.
       const DAYS = [1, 3, 7, 16, 35]
-      return { ...s, highlights: s.highlights.map(h => {
+      const today = dayKey(), r = s.review || initial().review
+      const streak = r.last === today ? r.streak : r.last === dayKey(Date.now() - 864e5) ? r.streak + 1 : 1
+      return { ...s, review: { streak, last: today, log: { ...r.log, [today]: (r.log[today] || 0) + 1 } }, highlights: s.highlights.map(h => {
         if (h.id !== a.id) return h
         const box = a.remembered ? Math.min((h.box || 0) + 1, DAYS.length - 1) : 0
         return { ...h, box, due: Date.now() + (a.remembered ? DAYS[box] * 864e5 : 0), reviewedAt: Date.now() }
       }) }
     }
+    case 'readPos': return { ...s, papers: s.papers.map(p => p.id !== a.id ? p : {
+      ...p, readPos: { page: a.page, scale: a.scale }, readMax: Math.max(p.readMax || 0, a.page), pages: a.pages || p.pages, lastReadAt: Date.now(),
+      status: !p.status || p.status === 'toread' ? 'reading' : p.status,
+    }) }
+    case 'saveDraft': return a.draft.id && s.drafts.some(d => d.id === a.draft.id)
+      ? { ...s, drafts: s.drafts.map(d => d.id === a.draft.id ? { ...d, ...a.draft, updatedAt: Date.now() } : d) }
+      : { ...s, drafts: [{ ...a.draft, id: a.draft.id || uid(), updatedAt: Date.now() }, ...s.drafts], activity: log('started a writing draft') }
+    case 'deleteDraft': return { ...s, drafts: s.drafts.filter(d => d.id !== a.id) }
+    // Sync: replace shared collections with a merged copy from the server (already sanitized).
+    case 'merge': return { ...s, ...a.doc }
     case 'chat': return { ...s, chat: [...s.chat, a.msg].slice(-60) }
     case 'clearChat': return { ...s, chat: [] }
     case 'invite': return { ...s, members: [...s.members, { id: uid(), name: a.name, role: a.role }], activity: log(`invited ${a.name}`) }
@@ -91,20 +142,9 @@ function reducer(s, a) {
     case 'log': return { ...s, activity: log(a.text) }
     case 'settings': return { ...s, settings: { ...s.settings, ...a.patch } }
     case 'import': {
-      // Imported files are untrusted: keep our own API key and coerce paper fields to expected types.
-      const str = v => (typeof v === 'string' ? v : '')
-      const papers = (Array.isArray(a.state.papers) ? a.state.papers : []).filter(p => p && typeof p.id === 'string' && typeof p.title === 'string').map(p => ({
-        ...p, arxiv: str(p.arxiv) || p.id, abstract: str(p.abstract), method: str(p.method), dataset: str(p.dataset), finding: str(p.finding), limitation: str(p.limitation), venue: str(p.venue),
-        year: Number(p.year) || 0, citations: Number(p.citations) || 0,
-        authors: Array.isArray(p.authors) ? p.authors.map(String) : [], tags: Array.isArray(p.tags) ? p.tags.map(String) : [],
-      }))
-      const { apiKey, ...settings } = a.state.settings || {}
-      const highlights = (Array.isArray(a.state.highlights) ? a.state.highlights : []).filter(h => h && typeof h.id === 'string').map(h => ({
-        ...h, text: str(h.text), note: str(h.note), term: str(h.term), definition: str(h.definition), kind: ['important', 'idea', 'question', 'term'].includes(h.kind) ? h.kind : 'important',
-        page: Number(h.page) || 0, box: Number(h.box) || 0, due: Number(h.due) || Date.now(), createdAt: Number(h.createdAt) || Date.now(),
-        tags: Array.isArray(h.tags) ? h.tags.map(String) : [], rects: Array.isArray(h.rects) ? h.rects.filter(r => r && [r.x, r.y, r.w, r.h].every(Number.isFinite)) : [],
-      }))
-      return { ...initial(), ...a.state, papers, highlights, settings: { ...initial().settings, ...settings, apiKey: s.settings.apiKey } }
+      // Imported files are untrusted: keep our own secrets and coerce fields to expected types.
+      const { apiKey, zoteroKey, s2Key, ...settings } = a.state.settings || {}
+      return { ...initial(), ...a.state, ...sanitizeDoc(a.state), settings: { ...initial().settings, ...settings, apiKey: s.settings.apiKey, zoteroKey: s.settings.zoteroKey, s2Key: s.settings.s2Key } }
     }
     case 'reset': return initial()
     default: return s
@@ -124,7 +164,18 @@ export function StoreProvider({ children }) {
   useEffect(() => { document.documentElement.dataset.theme = state.settings.darkMode ? 'dark' : 'light' }, [state.settings.darkMode])
   const index = useMemo(() => buildIndex(state.papers), [state.papers])
   const value = useMemo(() => ({ state, dispatch, index }), [state, index])
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>
+  return <Ctx.Provider value={value}><SyncBridge state={state} dispatch={dispatch} />{children}</Ctx.Provider>
+}
+
+// Connects the store to the sync engine: starts it per workspace and pushes shared changes.
+function SyncBridge({ state, dispatch }) {
+  const ref = useRef(state)
+  ref.current = state
+  useSync()
+  const ws = getAuth()?.workspace?.id
+  useEffect(() => { startEngine(() => ref.current, doc => dispatch({ type: 'merge', doc: sanitizeDoc(doc) })) }, [ws])
+  useEffect(() => { schedulePush() }, SHARED.map(k => state[k]))
+  return null
 }
 
 export const useStore = () => useContext(Ctx)

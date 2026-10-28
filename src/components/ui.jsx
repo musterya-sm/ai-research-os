@@ -33,13 +33,17 @@ export function Modal({ title, onClose, children, wide }) {
 
 export const Tags = ({ tags }) => <span>{(tags || []).map(t => <span key={t} className="tag">{t}</span>)}</span>
 
+export const STATUS = { toread: 'To read', reading: 'Reading', done: 'Done' }
+export const progressOf = p => (p.pages && p.readMax ? Math.min(1, p.readMax / p.pages) : 0)
+export const Progress = ({ p, w = 80 }) => <span title={`${Math.round(progressOf(p) * 100)}% read`} style={{ display: 'inline-block', width: w, height: 5, background: 'var(--soft)', verticalAlign: 'middle' }}><span style={{ display: 'block', height: 5, width: `${progressOf(p) * 100}%`, background: 'var(--violet)' }} /></span>
+
 export function PaperRow({ paper, right, onClick }) {
   const { dispatch } = useStore()
   return (
     <div className="list-item" onClick={onClick || (() => nav(`/paper/${paper.id}`))}>
       <div className="thumb" />
       <div className="grow">
-        <div className="t">{paper.title} {paper.hasPdf && <span className="tag violet">PDF</span>}</div>
+        <div className="t">{paper.title} {paper.hasPdf && <span className="tag violet">PDF</span>}{paper.status && <span className={`tag ${paper.status === 'done' ? 'lime' : ''}`}>{STATUS[paper.status]}</span>} {progressOf(paper) > 0 && paper.status !== 'done' && <Progress p={paper} w={60} />}</div>
         <div className="muted tiny mono">{authorLine(paper)}</div>
         {right === undefined && <div style={{ marginTop: 6 }}><Tags tags={paper.tags} /></div>}
       </div>
@@ -103,6 +107,14 @@ function useGlossary() {
       return `<abbr class="gloss" title="${escHtml(t.definition)}">${m}</abbr>`
     })).join('')
   }
+}
+
+// Note text with [[term]] rendered as links into the dictionary.
+export function NoteText({ text }) {
+  return <>{String(text || '').split(/(\[\[[^\]]{1,80}\]\])/).map((part, i) => {
+    const m = part.match(/^\[\[(.+)\]\]$/)
+    return m ? <a key={i} href={`#/notes/dictionary/${encodeURIComponent(m[1].trim())}`} className="wikilink" onClick={e => e.stopPropagation()}>{m[1]}</a> : part
+  })}</>
 }
 
 // Plain text with dictionary terms underlined.

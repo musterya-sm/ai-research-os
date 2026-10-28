@@ -22,6 +22,7 @@ export default function PaperLibrary() {
     let ps = state.papers
     if (view === 'starred') ps = ps.filter(p => p.starred)
     else if (view === 'pdf') ps = ps.filter(p => p.hasPdf)
+    else if (view.startsWith('status:')) ps = ps.filter(p => p.status === view.slice(7))
     else if (view !== 'all') { const c = state.collections.find(c => c.id === view); ps = ps.filter(p => c?.paperIds.includes(p.id)) }
     if (tag) ps = ps.filter(p => p.tags.includes(tag))
     if (q) { const t = q.toLowerCase(); ps = ps.filter(p => `${p.title} ${p.authors.join(' ')} ${p.abstract} ${p.arxiv}`.toLowerCase().includes(t)) }
@@ -41,6 +42,8 @@ export default function PaperLibrary() {
             <NavBtn id="all" label="All Papers" count={state.papers.length} />
             <NavBtn id="starred" label="Starred" count={state.papers.filter(p => p.starred).length} />
             <NavBtn id="pdf" label="With PDF" count={state.papers.filter(p => p.hasPdf).length} />
+            <div className="label muted" style={{ margin: '12px 8px 4px' }}>Reading list</div>
+            {[['toread', 'To read'], ['reading', 'Reading'], ['done', 'Done']].map(([k, l]) => <NavBtn key={k} id={`status:${k}`} label={l} count={state.papers.filter(p => p.status === k).length} />)}
             <div className="label muted" style={{ margin: '12px 8px 4px' }}>My Collections</div>
             {state.collections.map(c => <div key={c.id} className="row" style={{ gap: 0 }}><NavBtn id={c.id} label={c.name} count={c.paperIds.length} /><button className="star" title="Delete collection" onClick={() => confirm(`Delete collection "${c.name}"?`) && (dispatch({ type: 'deleteCollection', id: c.id }), setView('all'))}><Trash2 size={13} /></button></div>)}
             <button onClick={() => { const name = prompt('Collection name'); name && dispatch({ type: 'addCollection', name }) }}><span>+ New Collection</span></button>

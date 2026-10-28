@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { Star, ExternalLink, Trash2, Sparkles, FolderPlus, Paperclip, Pencil } from 'lucide-react'
+import { Star, Trash2, Sparkles, FolderPlus, Paperclip, Pencil } from 'lucide-react'
 import PdfViewer, { PdfThumbs } from '../components/PdfViewer.jsx'
 import { ingestPdf } from '../lib/ingest.js'
 import { deletePdf } from '../lib/pdfstore.js'
-import { Head, Modal, Tags, Prose, Gloss, AiBadge, nav, authorLine, toast, useAI } from '../components/ui.jsx'
+import { Head, Modal, Tags, Prose, Gloss, AiBadge, nav, authorLine, toast, useAI, STATUS, Progress, progressOf } from '../components/ui.jsx'
+import Citations from '../components/Citations.jsx'
 import { KINDS } from '../lib/highlights.js'
 import { useStore } from '../lib/store.jsx'
 import { summarize, keyPoints, similar } from '../lib/nlp.js'
@@ -19,7 +20,7 @@ export default function PaperView({ arg, sub }) {
   const [collOpen, setCollOpen] = useState(false)
   const [tagText, setTagText] = useState('')
   const { run, busy, error } = useAI()
-  const [pdfPage, setPdfPage] = useState(Number(linkPage) || 1)
+  const [pdfPage, setPdfPage] = useState(Number(linkPage) || undefined) // undefined → resume where you left off
   const [attaching, setAttaching] = useState(false)
   const [editing, setEditing] = useState(null)
   const fileRef = useRef()
@@ -63,6 +64,11 @@ export default function PaperView({ arg, sub }) {
             <h2 style={{ margin: 0, fontSize: 22 }}>{p.title}</h2>
             <div className="muted mono small" style={{ marginTop: 6 }}>{authorLine(p)} · {p.citations ? `~${p.citations} citations` : 'citations n/a'}</div>
             <div style={{ marginTop: 8 }}><Tags tags={p.tags} /></div>
+            <div className="row" style={{ marginTop: 8 }}>
+              <select className="input" style={{ width: 'auto', padding: '4px 8px' }} value={p.status || ''} onChange={e => dispatch({ type: 'updatePaper', id: p.id, patch: { status: e.target.value || undefined } })}><option value="">No reading status</option>{Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+              {progressOf(p) > 0 && <span className="mono tiny muted"><Progress p={p} /> p.{p.readPos?.page || p.readMax} of {p.pages}</span>}
+              {p.hasPdf && p.readPos && tab !== 'pdf' && <button className="btn sm violet" onClick={() => { setPdfPage(undefined); setTab('pdf') }}>Continue reading →</button>}
+            </div>
           </div>
           <div className="row">
             <button className={`star ${p.starred ? 'on' : ''}`} onClick={() => dispatch({ type: 'toggleStar', id: p.id })}><Star size={20} fill={p.starred ? 'currentColor' : 'none'} /></button>
@@ -120,7 +126,8 @@ export default function PaperView({ arg, sub }) {
         </div>}
 
         {tab === 'citations' && <div className="stack">
-          <p className="muted small">Most related papers in your library (by content similarity). <a href={`https://www.semanticscholar.org/arxiv/${p.arxiv}`} target="_blank" rel="noreferrer">See full citation graph on Semantic Scholar <ExternalLink size={11} /></a></p>
+          <Citations paper={p} />
+          <h3 style={{ marginTop: 18 }}>Similar in your library</h3>
           {sims.map(s => <div key={s.paper.id} className="list-item" onClick={() => nav(`/paper/${s.paper.id}`)}><div className="grow"><div className="t small">{s.paper.title}</div><div className="mono tiny muted">{s.paper.year} · {s.paper.authors[0]}</div></div><span className="match">{Math.round(s.score * 100)}% sim</span></div>)}
         </div>}
       </div>

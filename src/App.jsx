@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Home, NotebookPen, LayoutDashboard, Library, Network, Search, TableProperties, Radar, Lightbulb, Swords, History, Bot, Share2, Workflow, Boxes, Rss, Settings as Cog } from 'lucide-react'
+import { Home, NotebookPen, PenLine, LayoutDashboard, Library, Network, Search, TableProperties, Radar, Lightbulb, Swords, History, Bot, Share2, Workflow, Boxes, Rss, Settings as Cog } from 'lucide-react'
 import { nav } from './components/ui.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import Landing from './views/Landing.jsx'
@@ -20,6 +20,10 @@ import ConceptClusters from './views/ConceptClusters.jsx'
 import Feed from './views/Feed.jsx'
 import Settings from './views/Settings.jsx'
 import Notebook from './views/Notebook.jsx'
+import Writing from './views/Writing.jsx'
+import { useStore } from './lib/store.jsx'
+import { checkReminder } from './lib/reminder.js'
+import { SyncBadge } from './components/SyncPanel.jsx'
 
 export const ROUTES = [
   ['dashboard', 'Dashboard', LayoutDashboard, Dashboard],
@@ -37,11 +41,12 @@ export const ROUTES = [
   ['clusters', 'Concept Clusters', Boxes, ConceptClusters],
   ['feed', 'Recommendation Feed', Rss, Feed],
   ['notes', 'Knowledge Notebook', NotebookPen, Notebook],
+  ['write', 'Writing Studio', PenLine, Writing],
   ['settings', 'Settings', Cog, Settings],
 ]
 
-// Screen numbers follow the mockup (04 is Paper View, reached from the library); Notebook is the new 17.
-const NUMS = { dashboard: 1, library: 2, canvas: 3, search: 5, survey: 6, gaps: 7, hypotheses: 8, contradictions: 9, timeline: 10, copilot: 11, export: 12, workflows: 13, clusters: 14, feed: 15, notes: 17, settings: 16 }
+// Screen numbers follow the mockup (04 is Paper View, reached from the library); 17+ are additions.
+const NUMS = { dashboard: 1, library: 2, canvas: 3, search: 5, survey: 6, gaps: 7, hypotheses: 8, contradictions: 9, timeline: 10, copilot: 11, export: 12, workflows: 13, clusters: 14, feed: 15, notes: 17, write: 18, settings: 16 }
 
 const parse = () => (window.location.hash.replace(/^#\/?/, '') || 'home').split('/')
 
@@ -55,6 +60,14 @@ export default function App() {
     return () => { window.removeEventListener('hashchange', on); window.removeEventListener('keydown', key) }
   }, [])
 
+  const { state } = useStore()
+  useEffect(() => {
+    const tick = () => checkReminder(state.settings, state.highlights)
+    tick()
+    const t = setInterval(tick, 60000)
+    return () => clearInterval(t)
+  }, [state.settings.reminder, state.settings.reminderTime, state.highlights])
+
   const [name, arg, sub] = route
   const View = name === 'home' ? Landing : name === 'paper' ? PaperView : ROUTES.find(r => r[0] === name)?.[3] || Dashboard
 
@@ -66,13 +79,14 @@ export default function App() {
         <div className="sep" />
         {ROUTES.map(([key, label, Icon], i) => (
           <span key={key} style={{ display: 'contents' }}>
-            {(i === 3 || i === 9 || i === 15) && <div className="sep" />}
+            {(i === 3 || i === 9 || i === 14 || i === 16) && <div className="sep" />}
             <button className={name === key || (key === 'library' && name === 'paper') ? 'on' : ''} onClick={() => nav(`/${key}`)}>
               <Icon size={19} /><span className="tip">{String(NUMS[key]).padStart(2, "0")} · {label}</span>
             </button>
           </span>
         ))}
       </nav>
+      <div className="sync-float"><SyncBadge /></div>
       <main><ErrorBoundary key={[name, arg, sub].join('/')}><View arg={arg} sub={sub} /></ErrorBoundary></main>
     </div>
   )

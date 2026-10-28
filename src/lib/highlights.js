@@ -1,3 +1,5 @@
+import { tokenize } from './nlp.js'
+
 // Shared metadata + helpers for highlights / dictionary.
 export const KINDS = {
   important: { label: 'Important', color: '#fde047' },
@@ -30,4 +32,29 @@ export function notebookMarkdown(highlights, papers) {
   for (const h of highlights.filter(h => h.kind !== 'term')) (byPaper[h.paperId || ''] ||= []).push(h)
   return [`# Research Notebook`, '', `## Dictionary`, ...terms.map(t => `- **${t.term}** — ${t.definition}${t.paperId ? ` _(${title(t.paperId)})_` : ''}`), '',
     ...Object.entries(byPaper).flatMap(([pid, hs]) => [`## ${title(pid)}`, ...hs.map(h => `- ${KINDS[h.kind].label}${h.page ? ` (p.${h.page})` : ''}: “${h.text}”${h.note ? `\n  - ${h.note}` : ''}`), ''])].join('\n')
+}
+
+// [[term]] links inside notes and highlight text.
+export const linksIn = text => [...String(text || '').matchAll(/\[\[([^\]]{1,80})\]\]/g)].map(m => m[1].trim())
+
+// Everything that points at a dictionary term: explicit [[links]] first, then plain mentions.
+export function backlinks(term, highlights) {
+  const t = term.term.toLowerCase()
+  return highlights.filter(h => h.id !== term.id).map(h => {
+    const linked = linksIn(`${h.note} ${h.text} ${h.definition || ''}`).some(l => l.toLowerCase() === t)
+    const mentioned = !linked && `${h.text} ${h.note} ${h.definition || ''}`.toLowerCase().includes(t)
+    return linked || mentioned ? { h, linked } : null
+  }).filter(Boolean).sort((a, b) => b.linked - a.linked)
+}
+
+// Highlights from *other* papers with the most word overlap (cosine on token counts).
+export function relatedHighlights(h, all, n = 3) {
+  const vec = x => { const m = new Map(); for (const t of tokenize(`${x.term || ''} ${x.text} ${x.note || ''} ${(x.tags || []).join(' ')}`)) m.set(t, (m.get(t) || 0) + 1); return m }
+  const norm = m => Math.sqrt([...m.values()].reduce((s, v) => s + v * v, 0)) || 1
+  const a = vec(h), na = norm(a)
+  return all.filter(x => x.id !== h.id && (!h.paperId || x.paperId !== h.paperId)).map(x => {
+    const b = vec(x); let dot = 0
+    for (const [t, v] of a) dot += v * (b.get(t) || 0)
+    return { h: x, score: dot / (na * norm(b)) }
+  }).filter(r => r.score > 0.12).sort((x, y) => y.score - x.score).slice(0, n)
 }

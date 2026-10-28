@@ -8,7 +8,8 @@ export function download(name, content, type = 'text/plain') {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-export const toBibtex = papers => papers.map(p => `@article{${p.arxiv.replace(/\W/g, '')},\n  title = {${p.title}},\n  author = {${p.authors.join(' and ')}},\n  year = {${p.year}},\n  eprint = {${p.arxiv}},\n  archivePrefix = {arXiv},\n  abstract = {${p.abstract}}\n}`).join('\n\n')
+export const citeKey = p => `${(p.authors[0] || 'anon').split(' ').pop().replace(/\W/g, '').toLowerCase()}${p.year || ''}${p.arxiv.replace(/\W/g, '').slice(-5)}`
+export const toBibtex = papers => papers.map(p => `@article{${citeKey(p)},\n  title = {${p.title}},\n  author = {${p.authors.join(' and ')}},\n  year = {${p.year}},\n${/^\d{4}\.\d{4,5}$/.test(p.arxiv) ? `  eprint = {${p.arxiv}},\n  archivePrefix = {arXiv},\n` : p.doi ? `  doi = {${p.doi}},\n` : ''}  abstract = {${p.abstract}}\n}`).join('\n\n')
 
 export function toCsv(papers) {
   const cols = ['arxiv', 'title', 'authors', 'year', 'citations', 'tags', 'method', 'dataset', 'finding', 'limitation']
@@ -34,7 +35,7 @@ export function printPdf(html) {
 
 // Workspace JSON for sharing: never include the API key. Optionally bundles uploaded PDFs as base64.
 export async function workspaceJson(state, { includePdfs = false } = {}) {
-  const { apiKey, ...settings } = state.settings
+  const { apiKey, zoteroKey, s2Key, ...settings } = state.settings
   const out = { ...state, settings }
   if (includePdfs) {
     const { getPdf } = await import('./pdfstore.js')

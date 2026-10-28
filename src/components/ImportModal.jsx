@@ -4,6 +4,7 @@ import { Modal, toast } from './ui.jsx'
 import { useStore } from '../lib/store.jsx'
 import { searchArxiv, parseBibtex, inferTags } from '../lib/arxiv.js'
 import { ingestPdf } from '../lib/ingest.js'
+import { fetchZotero, parseCslJson, parseRis } from '../lib/zotero.js'
 import { nav } from './ui.jsx'
 
 export default function ImportModal({ onClose, initialTab = 'pdf' }) {
@@ -17,6 +18,8 @@ export default function ImportModal({ onClose, initialTab = 'pdf' }) {
   const [err, setErr] = useState('')
   const [bib, setBib] = useState('')
   const [manual, setManual] = useState({ title: '', authors: '', year: new Date().getFullYear(), abstract: '' })
+  const [zot, setZot] = useState({ userId: state.settings.zoteroUser, key: state.settings.zoteroKey })
+  const [zres, setZres] = useState('')
   const have = new Set(state.papers.map(p => p.id))
 
   async function go(e) {
@@ -37,11 +40,31 @@ export default function ImportModal({ onClose, initialTab = 'pdf' }) {
       } catch (e) { upd(i, { status: `failed: ${e.message}` }) }
     }
   }
+  async function zotero() {
+    setBusy(true); setErr(''); setZres('')
+    dispatch({ type: 'settings', patch: { zoteroUser: zot.userId.trim(), zoteroKey: zot.key.trim() } })
+    try {
+      const { papers, collections } = await fetchZotero({ userId: zot.userId.trim(), key: zot.key.trim() })
+      const fresh = papers.filter(p => !have.has(p.id))
+      if (fresh.length) dispatch({ type: 'addPapers', papers: fresh })
+      if (collections.length) dispatch({ type: 'upsertCollections', collections })
+      setZres(`Imported ${fresh.length} new of ${papers.length} items${collections.length ? ` · ${collections.length} collections` : ''}`)
+    } catch (x) { setErr(x.message) } finally { setBusy(false) }
+  }
+  async function zoteroFile(f) {
+    const text = await f.text()
+    try {
+      const ps = /\.ris$/i.test(f.name) ? parseRis(text) : /\.bib$/i.test(f.name) ? parseBibtex(text + '\n') : parseCslJson(text)
+      const fresh = ps.filter(p => !have.has(p.id))
+      fresh.length ? add(fresh) : toast('No new items in that file')
+      setZres(`Imported ${fresh.length} new of ${ps.length} items from ${f.name}`)
+    } catch (x) { setErr(`Could not read ${f.name}: ${x.message}`) }
+  }
   const add = ps => { dispatch({ type: 'addPapers', papers: ps }); toast(`Imported ${ps.length} paper${ps.length > 1 ? 's' : ''}`) }
 
   return (
     <Modal title="Import papers" onClose={onClose} wide>
-      <div className="tabs">{[['pdf', 'Upload PDFs'], ['arxiv', 'arXiv search / ID'], ['bibtex', 'BibTeX'], ['manual', 'Manual']].map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
+      <div className="tabs">{[['pdf', 'Upload PDFs'], ['arxiv', 'arXiv search / ID'], ['zotero', 'Zotero'], ['bibtex', 'BibTeX'], ['manual', 'Manual']].map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
       {tab === 'pdf' && <>
         <label className="empty" style={{ display: 'block', cursor: 'pointer', borderColor: drag ? 'var(--violet)' : null, background: drag ? 'var(--soft)' : null }}
           onDragOver={e => { e.preventDefault(); setDrag(true) }} onDragLeave={() => setDrag(false)} onDrop={e => { e.preventDefault(); setDrag(false); upload(e.dataTransfer.files) }}>
@@ -74,6 +97,21 @@ export default function ImportModal({ onClose, initialTab = 'pdf' }) {
           ))}
         </div>
       </>}
+      {tab === 'zotero' && <div className="stack">
+        <p className="small muted" style={{ margin: 0 }}>Connect your Zotero library: find your <b>user ID</b> and create a read-only <b>API key</b> at <a href="https://www.zotero.org/settings/keys" target="_blank" rel="noreferrer">zotero.org/settings/keys</a>. Collections come across too. The key stays in this browser.</p>
+        <div className="row wrap">
+          <input className="input" style={{ width: 160 }} placeholder="User ID (numbers)" value={zot.userId} onChange={e => setZot({ ...zot, userId: e.target.value })} />
+          <input className="input mono grow" type="password" placeholder="API key" value={zot.key} onChange={e => setZot({ ...zot, key: e.target.value })} />
+          <button className="btn violet" disabled={busy || !zot.userId.trim() || !zot.key.trim()} onClick={zotero}>{busy ? <span className="spinner" /> : 'Import library'}</button>
+        </div>
+        <label className="empty" style={{ display: 'block', cursor: 'pointer' }}>
+          <Upload size={20} /><div style={{ fontWeight: 600, color: 'var(--ink)' }}>…or upload a Zotero export</div>
+          <div className="small">File → Export Library as CSL JSON, RIS or BibTeX</div>
+          <input type="file" accept=".json,.ris,.bib,application/json" hidden onChange={e => { e.target.files[0] && zoteroFile(e.target.files[0]); e.target.value = '' }} />
+        </label>
+        {err && <p className="small" style={{ color: 'var(--red)' }}>{err}</p>}
+        {zres && <p className="match small">{zres}</p>}
+      </div>}
       {tab === 'bibtex' && <>
         <textarea className="input mono small" style={{ minHeight: 220 }} placeholder="@article{key,&#10;  title = {...},&#10;  author = {A and B},&#10;  year = {2024},&#10;}" value={bib} onChange={e => setBib(e.target.value)} />
         <button className="btn violet" style={{ marginTop: 10 }} onClick={() => { const ps = parseBibtex(bib + '\n'); ps.length ? (add(ps), onClose()) : toast('No entries found') }}>Import BibTeX</button>

@@ -133,3 +133,28 @@ table.data tr:hover td { background: var(--soft); }
 @keyframes hlflash { 50% { opacity: 1; outline: 3px solid var(--violet); } }
 abbr.gloss { text-decoration: underline dotted var(--violet) 2px; text-underline-offset: 3px; cursor: help; }
 .flashcard { border: 2px solid var(--line); box-shadow: 6px 6px 0 var(--line); background: var(--panel); min-height: 220px; padding: 28px; display: grid; place-items: center; text-align: center; cursor: pointer; font-size: 18px; line-height: 1.5; }
+a.wikilink { color: var(--violet); text-decoration: none; border-bottom: 1.5px solid var(--violet); font-weight: 600; }
+.flash-outline { outline: 3px solid var(--violet); outline-offset: 2px; transition: outline-color 1s; }
+.heat { display: grid; grid-template-columns: repeat(14, 1fr); gap: 3px; }
+.heat span { aspect-ratio: 1; border: 1.5px solid var(--line); }
+.sync-float { position: fixed; bottom: 12px; right: 14px; z-index: 40; }
+.sync-float:empty { display: none; }
+
+/* Phone: the rail becomes a scrollable bottom bar; single-column layouts. */
+@media (max-width: 700px) {
+  .app { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
+  main { padding: 14px 14px 24px; grid-row: 1; }
+  .rail { grid-row: 2; flex-direction: row; overflow-x: auto; overflow-y: hidden; padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); gap: 4px; }
+  .rail .logo { margin: 0 8px 0 4px; }
+  .rail .sep { width: 1px; height: 24px; margin: 0 2px; }
+  .rail button .tip { display: none; }
+  .head { flex-wrap: wrap; }
+  .head .actions { margin-left: 0; width: 100%; }
+  .reader-grid { grid-template-columns: 1fr !important; }
+  .g4 { grid-template-columns: 1fr 1fr; }
+  .reader-scroll { height: 70vh !important; padding: 4px !important; }
+  .flashcard { min-height: 260px; padding: 20px; font-size: 17px; }
+  .modal { max-height: 92vh; overflow-y: auto; }
+  .tabs { overflow-x: auto; flex-wrap: nowrap; }
+  .sync-float { top: auto; bottom: 66px; right: 10px; }
+}

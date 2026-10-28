@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { Search, Plus, LayoutGrid, Sparkles } from 'lucide-react'
-import { Head, nav, authorLine, ago } from '../components/ui.jsx'
+import { Search, Plus, LayoutGrid, Sparkles, Flame, BookOpen } from 'lucide-react'
+import { Head, nav, authorLine, ago, Progress, progressOf } from '../components/ui.jsx'
 import ImportModal from '../components/ImportModal.jsx'
-import { useStore } from '../lib/store.jsx'
+import { useStore, dayKey } from '../lib/store.jsx'
 
 export default function Dashboard() {
   const { state } = useStore()
@@ -35,6 +35,21 @@ export default function Dashboard() {
               {stats.map(([l, v, to]) => <div key={l} className="stat" style={{ cursor: 'pointer' }} onClick={() => nav(to)}><small>{l}</small><b>{v.toLocaleString()}</b></div>)}
             </div>
           </div>
+          {(() => {
+            const reading = state.papers.filter(p => p.status === 'reading').sort((a, b) => (b.lastReadAt || 0) - (a.lastReadAt || 0)).slice(0, 4)
+            const toRead = state.papers.filter(p => p.status === 'toread').length
+            return (reading.length > 0 || toRead > 0) && <div className="card">
+              <div className="row between"><h3>Continue reading</h3><button className="btn sm ghost" onClick={() => nav('/library')}>{toRead} to read →</button></div>
+              {!reading.length && <p className="muted small" style={{ margin: 0 }}>Nothing in progress. Open a paper from your To-read list to start.</p>}
+              <div className="grid g2">{reading.map(p => (
+                <div key={p.id} className="list-item" onClick={() => nav(`/paper/${encodeURIComponent(p.id)}/${p.hasPdf ? 'pdf' : ''}`)}>
+                  <BookOpen size={18} />
+                  <div className="grow"><div className="t small">{p.title.split(':')[0]}</div>
+                    <div className="mono tiny muted" style={{ marginTop: 4 }}><Progress p={p} /> {progressOf(p) ? `${Math.round(progressOf(p) * 100)}% · p.${p.readPos?.page}` : 'not started'}{p.lastReadAt ? ` · ${ago(p.lastReadAt)}` : ''}</div></div>
+                </div>))}
+              </div>
+            </div>
+          })()}
           <div className="card">
             <h3>Recently viewed</h3>
             <div className="grid g4">
@@ -52,7 +67,7 @@ export default function Dashboard() {
             const due = state.highlights.filter(h => (h.due || 0) <= Date.now())
             const pick = due[new Date().getDate() % (due.length || 1)]
             return pick && <div className="card" style={{ background: 'var(--lime)', color: '#0d0d0d' }}>
-              <h3>Remember this · {due.length} due</h3>
+              <div className="row between"><h3>Remember this · {due.length} due</h3>{(() => { const r = state.review || {}; const alive = r.last === dayKey() || r.last === dayKey(Date.now() - 864e5); return alive && r.streak ? <span className="mono tiny row" style={{ gap: 3 }}><Flame size={14} />{r.streak}d</span> : null })()}</div>
               <div style={{ lineHeight: 1.5 }}>{pick.kind === 'term' ? <><b>{pick.term}</b> — {pick.definition}</> : <>“{pick.text.slice(0, 180)}”</>}</div>
               <button className="btn sm dark" style={{ marginTop: 10 }} onClick={() => nav('/notes/review')}>Review now</button>
             </div>

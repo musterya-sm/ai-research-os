@@ -1,0 +1,20 @@
+{
+  "name": "AI Research OS",
+  "short_name": "Research OS",
+  "description": "Read, highlight, connect and write up research papers.",
+  "start_url": "/#/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4f4ef",
+  "theme_color": "#0d0d0d",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ],
+  "shortcuts": [
+    { "name": "Review flashcards", "url": "/#/notes/review" },
+    { "name": "Knowledge Notebook", "url": "/#/notes" }
+  ]
+}
