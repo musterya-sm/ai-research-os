@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Home, LayoutDashboard, Library, Network, Search, TableProperties, Radar, Lightbulb, Swords, History, Bot, Share2, Workflow, Boxes, Rss, Settings as Cog } from 'lucide-react'
+import { Home, NotebookPen, LayoutDashboard, Library, Network, Search, TableProperties, Radar, Lightbulb, Swords, History, Bot, Share2, Workflow, Boxes, Rss, Settings as Cog } from 'lucide-react'
 import { nav } from './components/ui.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import Landing from './views/Landing.jsx'
@@ -19,6 +19,7 @@ import AgentWorkflows from './views/AgentWorkflows.jsx'
 import ConceptClusters from './views/ConceptClusters.jsx'
 import Feed from './views/Feed.jsx'
 import Settings from './views/Settings.jsx'
+import Notebook from './views/Notebook.jsx'
 
 export const ROUTES = [
   ['dashboard', 'Dashboard', LayoutDashboard, Dashboard],
@@ -35,8 +36,12 @@ export const ROUTES = [
   ['workflows', 'AI Agent Workflows', Workflow, AgentWorkflows],
   ['clusters', 'Concept Clusters', Boxes, ConceptClusters],
   ['feed', 'Recommendation Feed', Rss, Feed],
+  ['notes', 'Knowledge Notebook', NotebookPen, Notebook],
   ['settings', 'Settings', Cog, Settings],
 ]
+
+// Screen numbers follow the mockup (04 is Paper View, reached from the library); Notebook is the new 17.
+const NUMS = { dashboard: 1, library: 2, canvas: 3, search: 5, survey: 6, gaps: 7, hypotheses: 8, contradictions: 9, timeline: 10, copilot: 11, export: 12, workflows: 13, clusters: 14, feed: 15, notes: 17, settings: 16 }
 
 const parse = () => (window.location.hash.replace(/^#\/?/, '') || 'home').split('/')
 
@@ -50,7 +55,7 @@ export default function App() {
     return () => { window.removeEventListener('hashchange', on); window.removeEventListener('keydown', key) }
   }, [])
 
-  const [name, arg] = route
+  const [name, arg, sub] = route
   const View = name === 'home' ? Landing : name === 'paper' ? PaperView : ROUTES.find(r => r[0] === name)?.[3] || Dashboard
 
   return (
@@ -61,14 +66,14 @@ export default function App() {
         <div className="sep" />
         {ROUTES.map(([key, label, Icon], i) => (
           <span key={key} style={{ display: 'contents' }}>
-            {(i === 3 || i === 9 || i === 14) && <div className="sep" />}
+            {(i === 3 || i === 9 || i === 15) && <div className="sep" />}
             <button className={name === key || (key === 'library' && name === 'paper') ? 'on' : ''} onClick={() => nav(`/${key}`)}>
-              <Icon size={19} /><span className="tip">{String(i < 3 ? i + 1 : i + 2).padStart(2, "0")} · {label}</span>
+              <Icon size={19} /><span className="tip">{String(NUMS[key]).padStart(2, "0")} · {label}</span>
             </button>
           </span>
         ))}
       </nav>
-      <main><ErrorBoundary key={name + (arg || '')}><View arg={arg} /></ErrorBoundary></main>
+      <main><ErrorBoundary key={[name, arg, sub].join('/')}><View arg={arg} sub={sub} /></ErrorBoundary></main>
     </div>
   )
 }

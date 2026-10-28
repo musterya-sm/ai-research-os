@@ -4,17 +4,21 @@ import { Head, Prose, AiBadge, useAI, nav } from '../components/ui.jsx'
 import { useStore } from '../lib/store.jsx'
 import { search, coverage, passages } from '../lib/nlp.js'
 import { paperContext } from '../lib/ai.js'
+import { searchHighlights, highlightsContext } from '../lib/highlights.js'
 
 const STARTERS = ['What are the main challenges in building memory systems for LLM agents?', 'Compare RAG and long-context approaches', 'Which papers should I read first on tool use?', 'Summarize how agent reflection has evolved']
 
 // Retrieval-only answer: top-k papers, grouped into findings and limitations.
-function localAnswer(q, hits, all) {
+function localAnswer(q, hits, all, notes = []) {
+  const notebook = notes.length ? ['', '## From your notebook', ...notes.slice(0, 4).map(h => h.kind === 'term' ? `- **${h.term}** — ${h.definition}` : `- “${h.text.slice(0, 200)}”${h.note ? ` (${h.note})` : ''}`)] : []
+  if (!hits.length && notes.length) return ['Nothing in your papers matched, but your notebook has:', ...notebook.slice(2)].join('\n')
   if (!hits.length) return 'I could not find relevant papers in your library. Try importing papers on this topic.'
   const lims = [...new Set(hits.map(h => h.paper.limitation).filter(Boolean))]
   const cov = coverage(hits.map(h => h.paper)).sort((a, b) => a.share - b.share)
   return [`Based on ${hits.length} relevant papers in your library:`, '', '## Key findings', ...hits.slice(0, 4).map((h, i) => `${i + 1}. **${h.paper.title.split(':')[0]}** (${h.paper.year}) — ${h.paper.finding || h.paper.abstract.slice(0, 100)} [${i + 1}]`),
     ...hits.filter(h => h.paper.body).slice(0, 2).flatMap(h => { const ex = passages(h.paper.body, q, 1)[0]; return ex ? ['', `> From the PDF of **${h.paper.title.split(':')[0]}**: “${ex.slice(0, 320)}…”`] : [] }),
     '', '## Main challenges', ...lims.slice(0, 4).map((l, i) => `${i + 1}. **${l}**`), `${lims.length + 1}. **Coverage**: ${cov[0].key.toLowerCase()} is rarely addressed in these papers.`,
+    ...notebook,
     '', `_Local retrieval answer over ${all} papers. Add a Claude API key in Settings for synthesized answers._`].join('\n')
 }
 
@@ -31,9 +35,10 @@ export default function Copilot() {
     setQ('')
     dispatch({ type: 'chat', msg: { role: 'user', text } })
     const hits = search(index, text, 8)
+    const notes = searchHighlights(state.highlights, text, 6)
     const history = state.chat.slice(-6).map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.text}`).join('\n')
-    const answer = await run({ maxTokens: 1500, prompt: `${history ? `Conversation so far:\n${history}\n\n` : ''}Question: ${text}\n\nRelevant papers from the user's library:\n${paperContext(hits.map(h => h.paper), text)}`, fallback: () => localAnswer(text, hits, state.papers.length) })
-    dispatch({ type: 'chat', msg: { role: 'ai', text: answer, sources: hits.slice(0, 5).map(h => h.paper.id) } })
+    const answer = await run({ maxTokens: 1500, prompt: `${history ? `Conversation so far:\n${history}\n\n` : ''}Question: ${text}\n\nRelevant papers from the user's library:\n${paperContext(hits.map(h => h.paper), text)}${notes.length ? `\n\nThe user's own highlights and dictionary (treat as their prior understanding; reconcile or correct if needed):\n${highlightsContext(notes)}` : ''}`, fallback: () => localAnswer(text, hits, state.papers.length, notes) })
+    dispatch({ type: 'chat', msg: { role: 'ai', text: answer, sources: hits.slice(0, 5).map(h => h.paper.id), notes: notes.length } })
   }
 
   return (
@@ -47,6 +52,7 @@ export default function Copilot() {
               <span style={{ border: '2px solid var(--line)', borderRadius: '50%', padding: 5, display: 'grid' }}>{m.role === 'user' ? <User size={16} /> : <Bot size={16} />}</span>
               <div className={`bubble ${m.role === 'user' ? 'me' : 'ai'}`} style={{ whiteSpace: m.role === 'user' ? 'pre-wrap' : 'normal' }}>
                 {m.role === 'user' ? m.text : <Prose text={m.text} />}
+                {m.notes > 0 && <span className="tag lime" style={{ cursor: 'pointer', marginTop: 8 }} onClick={() => nav('/notes')}>+ {m.notes} from your notebook</span>}
                 {m.sources?.length > 0 && <div style={{ marginTop: 8 }}>{m.sources.map((id, j) => { const p = state.papers.find(x => x.id === id); return p && <span key={id} className="tag" style={{ cursor: 'pointer' }} onClick={() => nav(`/paper/${id}`)}>[{j + 1}] {p.title.split(':')[0].slice(0, 28)}</span> })}</div>}
               </div>
             </div>))}

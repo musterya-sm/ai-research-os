@@ -3,20 +3,23 @@ import { Star, ExternalLink, Trash2, Sparkles, FolderPlus, Paperclip, Pencil } f
 import PdfViewer, { PdfThumbs } from '../components/PdfViewer.jsx'
 import { ingestPdf } from '../lib/ingest.js'
 import { deletePdf } from '../lib/pdfstore.js'
-import { Head, Modal, Tags, Prose, AiBadge, nav, authorLine, toast, useAI } from '../components/ui.jsx'
+import { Head, Modal, Tags, Prose, Gloss, AiBadge, nav, authorLine, toast, useAI } from '../components/ui.jsx'
+import { KINDS } from '../lib/highlights.js'
 import { useStore } from '../lib/store.jsx'
 import { summarize, keyPoints, similar } from '../lib/nlp.js'
 import { paperContext } from '../lib/ai.js'
 
-export default function PaperView({ arg }) {
+export default function PaperView({ arg, sub }) {
+  // Deep link from the notebook: /paper/<id>/pdf:<page>:<highlightId>
+  const [, linkPage, linkHl] = (sub || '').split(':')
   const { state, dispatch, index } = useStore()
   const p = state.papers.find(x => x.id === decodeURIComponent(arg || ''))
-  const [tab, setTab] = useState('overview')
+  const [tab, setTab] = useState(sub?.startsWith('pdf') ? 'pdf' : 'overview')
   const [ai, setAi] = useState({})
   const [collOpen, setCollOpen] = useState(false)
   const [tagText, setTagText] = useState('')
   const { run, busy, error } = useAI()
-  const [pdfPage, setPdfPage] = useState(1)
+  const [pdfPage, setPdfPage] = useState(Number(linkPage) || 1)
   const [attaching, setAttaching] = useState(false)
   const [editing, setEditing] = useState(null)
   const fileRef = useRef()
@@ -71,7 +74,13 @@ export default function PaperView({ arg }) {
 
         {tab === 'overview' && <div className="grid g2">
           <div className="stack">
-            <div className="card flat"><h3>TL;DR</h3><p style={{ margin: 0, lineHeight: 1.6 }}>{tldr}</p></div>
+            <div className="card flat"><h3>TL;DR</h3><p style={{ margin: 0, lineHeight: 1.6 }}><Gloss text={tldr} /></p></div>
+            {(() => { const mine = state.highlights.filter(h => h.paperId === p.id); return (
+              <div className="card flat"><div className="row between"><h3>My highlights ({mine.length})</h3>{mine.length > 0 && <button className="btn sm" onClick={() => nav('/notes')}>Notebook →</button>}</div>
+                {!mine.length && <p className="muted small" style={{ margin: 0 }}>{p.hasPdf ? 'Open the PDF tab and select text to highlight it.' : 'Attach the PDF to highlight passages.'}</p>}
+                <div className="stack">{mine.slice(0, 6).map(h => <div key={h.id} className="small" style={{ borderLeft: `5px solid ${KINDS[h.kind].color}`, paddingLeft: 8, cursor: h.page ? 'pointer' : 'default' }} onClick={() => h.page && nav(`/paper/${encodeURIComponent(p.id)}/pdf:${h.page}:${h.id}`)}>
+                  {h.kind === 'term' ? <><b>{h.term}</b> — {h.definition}</> : <>“{h.text.slice(0, 140)}{h.text.length > 140 ? '…' : ''}”</>}{h.note && <div className="muted">✎ {h.note}</div>}</div>)}</div>
+              </div>) })()}
             <div className="card flat"><h3>Key contributions</h3><ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>{points.map(x => <li key={x}>{x}</li>)}</ul></div>
             <div className="card flat"><h3>My notes</h3><textarea className="input" placeholder="Write notes — saved automatically" value={state.notes[p.id] || ''} onChange={e => dispatch({ type: 'setNote', id: p.id, text: e.target.value })} /></div>
           </div>
@@ -96,13 +105,13 @@ export default function PaperView({ arg }) {
         {tab === 'summary' && <div className="stack">
           <div className="row between"><AiBadge /><button className="btn violet" disabled={busy} onClick={deepSummary}>{busy ? <span className="spinner" /> : <Sparkles size={14} />} Generate deep summary</button></div>
           {error && <p className="small" style={{ color: 'var(--red)' }}>{error}</p>}
-          <div className="card flat"><h3>Abstract</h3><p style={{ lineHeight: 1.6, margin: 0 }}>{p.abstract}</p></div>
+          <div className="card flat"><h3>Abstract</h3><p style={{ lineHeight: 1.6, margin: 0 }}><Gloss text={p.abstract} /></p></div>
           {ai.summary && <div className="card flat"><Prose text={ai.summary} /></div>}
         </div>}
 
         {tab === 'keypoints' && <table className="data"><tbody>{[['Method', p.method], ['Dataset', p.dataset], ['Key finding', p.finding], ['Limitation', p.limitation], ['Concepts', p.tags.join(', ')]].map(([k, v]) => <tr key={k}><td className="mono tiny" style={{ width: 140 }}>{k.toUpperCase()}</td><td>{v || '—'}</td></tr>)}</tbody></table>}
 
-        {tab === 'pdf' && p.hasPdf && <PdfViewer id={p.id} startPage={pdfPage} />}
+        {tab === 'pdf' && p.hasPdf && <PdfViewer id={p.id} startPage={pdfPage} focusHighlight={linkHl} />}
 
         {tab === 'figures' && <div className="stack">
           {p.hasPdf ? <><p className="muted small">Pages of your uploaded PDF — click one to open it in the viewer.</p><PdfThumbs id={p.id} onPick={n => { setPdfPage(n); setTab('pdf') }} /></>

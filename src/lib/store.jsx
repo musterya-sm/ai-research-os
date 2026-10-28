@@ -29,6 +29,9 @@ const initial = () => ({
   recent: ['2310.08560', '2201.11903', '2404.13501', '2304.03442'],
   canvas: defaultCanvas(),
   hypotheses: [],
+  // Highlights from the PDF reader plus manual entries. kind: important | idea | question | term.
+  // Terms form the dictionary; box/due drive Leitner-style flashcard review.
+  highlights: [],
   chat: [],
   members: [
     { id: 'me', name: 'Arjun', role: 'Owner', you: true },
@@ -51,7 +54,7 @@ function reducer(s, a) {
       return { ...s, papers: [...fresh, ...s.papers], activity: fresh.length ? log(`added ${fresh.length} paper${fresh.length > 1 ? 's' : ''}`) : s.activity }
     }
     case 'updatePaper': return { ...s, papers: s.papers.map(p => p.id === a.id ? { ...p, ...a.patch } : p) }
-    case 'deletePaper': return { ...s, papers: s.papers.filter(p => p.id !== a.id), collections: s.collections.map(c => ({ ...c, paperIds: c.paperIds.filter(id => id !== a.id) })) }
+    case 'deletePaper': return { ...s, papers: s.papers.filter(p => p.id !== a.id), highlights: s.highlights.filter(h => h.paperId !== a.id), collections: s.collections.map(c => ({ ...c, paperIds: c.paperIds.filter(id => id !== a.id) })) }
     case 'toggleStar': return { ...s, papers: s.papers.map(p => p.id === a.id ? { ...p, starred: !p.starred } : p) }
     case 'viewPaper': return { ...s, recent: [a.id, ...s.recent.filter(id => id !== a.id)].slice(0, 12) }
     case 'addCollection': return { ...s, collections: [...s.collections, { id: uid(), name: a.name, paperIds: [] }], activity: log(`created collection “${a.name}”`) }
@@ -68,6 +71,18 @@ function reducer(s, a) {
     }
     case 'saveHypothesis': return { ...s, hypotheses: [{ id: uid(), at: Date.now(), ...a.h }, ...s.hypotheses], activity: log('created a new hypothesis') }
     case 'deleteHypothesis': return { ...s, hypotheses: s.hypotheses.filter(h => h.id !== a.id) }
+    case 'addHighlight': return { ...s, highlights: [{ id: uid(), createdAt: Date.now(), box: 0, due: Date.now(), tags: [], note: '', ...a.h }, ...s.highlights], activity: log(a.h.kind === 'term' ? `added “${a.h.term}” to the dictionary` : 'saved a highlight') }
+    case 'updateHighlight': return { ...s, highlights: s.highlights.map(h => h.id === a.id ? { ...h, ...a.patch } : h) }
+    case 'deleteHighlight': return { ...s, highlights: s.highlights.filter(h => h.id !== a.id) }
+    case 'reviewHighlight': {
+      // Leitner boxes: remembered → next box (1, 3, 7, 16, 35 days); forgot → back to box 0, due now.
+      const DAYS = [1, 3, 7, 16, 35]
+      return { ...s, highlights: s.highlights.map(h => {
+        if (h.id !== a.id) return h
+        const box = a.remembered ? Math.min((h.box || 0) + 1, DAYS.length - 1) : 0
+        return { ...h, box, due: Date.now() + (a.remembered ? DAYS[box] * 864e5 : 0), reviewedAt: Date.now() }
+      }) }
+    }
     case 'chat': return { ...s, chat: [...s.chat, a.msg].slice(-60) }
     case 'clearChat': return { ...s, chat: [] }
     case 'invite': return { ...s, members: [...s.members, { id: uid(), name: a.name, role: a.role }], activity: log(`invited ${a.name}`) }
@@ -84,7 +99,12 @@ function reducer(s, a) {
         authors: Array.isArray(p.authors) ? p.authors.map(String) : [], tags: Array.isArray(p.tags) ? p.tags.map(String) : [],
       }))
       const { apiKey, ...settings } = a.state.settings || {}
-      return { ...initial(), ...a.state, papers, settings: { ...initial().settings, ...settings, apiKey: s.settings.apiKey } }
+      const highlights = (Array.isArray(a.state.highlights) ? a.state.highlights : []).filter(h => h && typeof h.id === 'string').map(h => ({
+        ...h, text: str(h.text), note: str(h.note), term: str(h.term), definition: str(h.definition), kind: ['important', 'idea', 'question', 'term'].includes(h.kind) ? h.kind : 'important',
+        page: Number(h.page) || 0, box: Number(h.box) || 0, due: Number(h.due) || Date.now(), createdAt: Number(h.createdAt) || Date.now(),
+        tags: Array.isArray(h.tags) ? h.tags.map(String) : [], rects: Array.isArray(h.rects) ? h.rects.filter(r => r && [r.x, r.y, r.w, r.h].every(Number.isFinite)) : [],
+      }))
+      return { ...initial(), ...a.state, papers, highlights, settings: { ...initial().settings, ...settings, apiKey: s.settings.apiKey } }
     }
     case 'reset': return initial()
     default: return s

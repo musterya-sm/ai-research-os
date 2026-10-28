@@ -13,7 +13,7 @@ export default function Dashboard() {
   const recent = state.recent.map(id => state.papers.find(p => p.id === id)).filter(Boolean).slice(0, 4)
   // Connections = paper pairs that share at least one concept tag, plus hand-drawn canvas edges.
   const connections = state.papers.reduce((n, a, i) => n + state.papers.slice(i + 1).filter(b => b.tags.some(t => a.tags.includes(t))).length, 0) + state.canvas.edges.length
-  const stats = [['Papers', state.papers.length, '/library'], ['Collections', state.collections.length, '/library'], ['Connections', connections, '/canvas'], ['Notes', Object.values(state.notes).filter(Boolean).length + state.hypotheses.length, '/hypotheses']]
+  const stats = [['Papers', state.papers.length, '/library'], ['Collections', state.collections.length, '/library'], ['Connections', connections, '/canvas'], ['Notes', state.highlights.length + Object.values(state.notes).filter(Boolean).length, '/notes']]
 
   return (
     <>
@@ -48,6 +48,15 @@ export default function Dashboard() {
           </div>
         </div>
         <div className="stack">
+          {(() => {
+            const due = state.highlights.filter(h => (h.due || 0) <= Date.now())
+            const pick = due[new Date().getDate() % (due.length || 1)]
+            return pick && <div className="card" style={{ background: 'var(--lime)', color: '#0d0d0d' }}>
+              <h3>Remember this · {due.length} due</h3>
+              <div style={{ lineHeight: 1.5 }}>{pick.kind === 'term' ? <><b>{pick.term}</b> — {pick.definition}</> : <>“{pick.text.slice(0, 180)}”</>}</div>
+              <button className="btn sm dark" style={{ marginTop: 10 }} onClick={() => nav('/notes/review')}>Review now</button>
+            </div>
+          })()}
           <div className="card">
             <h3>Activity</h3>
             {state.activity.slice(0, 6).map(a => <div key={a.id} className="row between small" style={{ padding: '6px 0', borderBottom: '1.5px solid var(--soft)' }}><span><b>{a.who}</b> {a.text}</span><span className="muted tiny">{ago(a.at)}</span></div>)}

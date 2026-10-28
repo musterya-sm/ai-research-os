@@ -4,6 +4,7 @@ import { Head, PaperRow, nav, toast } from '../components/ui.jsx'
 import { useStore } from '../lib/store.jsx'
 import { search } from '../lib/nlp.js'
 import { searchArxiv } from '../lib/arxiv.js'
+import { searchHighlights, KINDS } from '../lib/highlights.js'
 
 const EXAMPLES = ['memory management in llm agents', 'retrieval vs long context', 'agents that learn tools', 'self-correction reasoning']
 
@@ -19,6 +20,7 @@ export default function SemanticSearch({ arg }) {
     return sort === 'year' ? [...r].sort((a, b) => b.paper.year - a.paper.year) : sort === 'citations' ? [...r].sort((a, b) => b.paper.citations - a.paper.citations) : r
   }, [index, submitted, sort])
   const have = new Set(state.papers.map(p => p.id))
+  const notes = useMemo(() => searchHighlights(state.highlights, submitted, 6), [state.highlights, submitted])
 
   const go = text => { setQ(text); setSubmitted(text); setWeb(null); nav(`/search/${encodeURIComponent(text)}`) }
   async function searchWeb() {
@@ -42,6 +44,10 @@ export default function SemanticSearch({ arg }) {
             <select className="input" style={{ width: 'auto', padding: '4px 8px' }} value={sort} onChange={e => setSort(e.target.value)}><option value="relevance">Sort: Relevance</option><option value="year">Sort: Newest</option><option value="citations">Sort: Citations</option></select>
           </div>
         </div>
+        {notes.length > 0 && <div className="card flat" style={{ marginBottom: 12, padding: 12 }}>
+          <div className="row between"><h3 style={{ margin: 0 }}>In your notebook · {notes.length}</h3><button className="btn sm" onClick={() => nav('/notes')}>Open notebook</button></div>
+          <div className="stack" style={{ marginTop: 8 }}>{notes.map(h => <div key={h.id} className="small" style={{ borderLeft: `5px solid ${KINDS[h.kind].color}`, paddingLeft: 8, cursor: h.paperId ? 'pointer' : 'default' }} onClick={() => h.paperId && nav(`/paper/${encodeURIComponent(h.paperId)}/${h.page ? `pdf:${h.page}:${h.id}` : ''}`)}>{h.kind === 'term' ? <><b>{h.term}</b> — {h.definition}</> : <>“{h.text.slice(0, 180)}”</>}{h.note && <span className="muted"> ✎ {h.note}</span>}</div>)}</div>
+        </div>}
         <div className="stack">
           {results.map(r => <PaperRow key={r.paper.id} paper={r.paper} right={<span className="match">{r.match}% MATCH</span>} />)}
           {!results.length && <div className="empty">No semantic matches. Try different words or search arXiv.</div>}

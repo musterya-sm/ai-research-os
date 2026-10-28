@@ -85,12 +85,39 @@ export function toast(msg) {
   toastTimer = setTimeout(() => { el.style.display = 'none' }, 2200)
 }
 
+const escHtml = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
+// Wraps dictionary terms found in already-escaped HTML with a hover definition (first occurrence per block).
+function useGlossary() {
+  const { state } = useStore()
+  const terms = state.highlights.filter(h => h.kind === 'term' && h.term?.length > 2).sort((a, b) => b.term.length - a.term.length)
+  return html => {
+    if (!terms.length) return html
+    const seen = new Set()
+    const re = new RegExp(`\\b(${terms.map(t => escHtml(t.term).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'gi')
+    // Only replace in text, never inside tags/attributes.
+    return html.split(/(<[^>]+>)/).map(part => part.startsWith('<') ? part : part.replace(re, m => {
+      const t = terms.find(x => escHtml(x.term).toLowerCase() === m.toLowerCase())
+      if (!t || seen.has(t.id)) return m
+      seen.add(t.id)
+      return `<abbr class="gloss" title="${escHtml(t.definition)}">${m}</abbr>`
+    })).join('')
+  }
+}
+
+// Plain text with dictionary terms underlined.
+export function Gloss({ text }) {
+  const link = useGlossary()
+  return <span dangerouslySetInnerHTML={{ __html: link(escHtml(text)) }} />
+}
+
 // Renders light markdown from LLM output: headings, bullets, bold.
 export function Prose({ text }) {
+  const link = useGlossary()
   return (
     <div style={{ lineHeight: 1.6 }}>
       {String(text || '').split('\n').map((line, i) => {
-        const html = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+        const html = link(escHtml(line).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>'))
         if (/^#{1,3}\s/.test(line)) return <div key={i} className="label" style={{ marginTop: 10 }} dangerouslySetInnerHTML={{ __html: html.replace(/^#+\s/, '') }} />
         if (/^\s*([-*•]|\d+\.)\s/.test(line)) return <div key={i} style={{ paddingLeft: 14 }} dangerouslySetInnerHTML={{ __html: html }} />
         return line.trim() ? <p key={i} style={{ margin: '4px 0' }} dangerouslySetInnerHTML={{ __html: html }} /> : null

@@ -7,6 +7,7 @@ import { searchArxiv } from '../lib/arxiv.js'
 import { paperContext } from '../lib/ai.js'
 import { localNarrative } from './LiteratureSurvey.jsx'
 import { download } from '../lib/exporter.js'
+import { searchHighlights, highlightsContext } from '../lib/highlights.js'
 
 const STEPS = [['Query', 'Define your research question'], ['Discover Agent', 'Find relevant papers & data'], ['Summarize Agent', 'Extract key insights'], ['Analyze Agent', 'Find patterns, gaps, trends'], ['Write Agent', 'Generate surveys'], ['Report', 'Final research report']]
 
@@ -46,7 +47,7 @@ export default function AgentWorkflows() {
     gaps.forEach(g => say(3, `Gap: ${g.title} (${g.impact.toLowerCase()})`)); await pause()
 
     setStage(4); say(4, 'Drafting survey…')
-    const body = await run({ maxTokens: 2200, prompt: `Write a concise research report answering: "${q}". Include: Executive summary, Key findings, Research gaps (${gaps.map(g => g.title).join('; ')}), Recommended next experiments. Cite [n].\n\n${paperContext(papers)}`, fallback: () => localNarrative(papers, q) })
+    const body = await run({ maxTokens: 2200, prompt: `Write a concise research report answering: "${q}". Include: Executive summary, Key findings, Research gaps (${gaps.map(g => g.title).join('; ')}), Recommended next experiments. Cite [n].\n\n${paperContext(papers, q)}${(() => { const n = searchHighlights(state.highlights, q, 8); return n.length ? `\n\nUser's notes:\n${highlightsContext(n)}` : '' })()}`, fallback: () => localNarrative(papers, q) })
     const full = `# Research Report\n\n**Question:** ${q}\n\n${body}\n\n## Research gaps\n${gaps.map(g => `- **${g.title}** — ${g.detail}`).join('\n')}\n\n## Sources\n${papers.map((p, i) => `${i + 1}. ${p.title} (${p.year}) arXiv:${p.arxiv}`).join('\n')}`
     setStage(5); setReport(full); say(5, 'Report ready.')
     dispatch({ type: 'log', text: 'ran a research agent workflow' })
