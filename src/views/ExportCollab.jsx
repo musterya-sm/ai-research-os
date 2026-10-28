@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { FileText, FileType, Sigma, Sheet, Braces, BookMarked, Upload, UserPlus, X } from 'lucide-react'
 import { Head, ago, toast, nav } from '../components/ui.jsx'
-import { useSync, getAuth, inviteMember, setMemberRole, removeMember } from '../lib/sync.js'
+import { useSync, getAuth, createInvite, revokeInvite, setMemberRole, removeMember } from '../lib/sync.js'
 import { SyncBadge } from '../components/SyncPanel.jsx'
 import { useStore } from '../lib/store.jsx'
 import { workspaceJson, restorePdfs, download, toCsv, toLatex, toBibtex, toHtmlReport, printPdf } from '../lib/exporter.js'
@@ -15,6 +15,7 @@ export default function ExportCollab() {
   const sync = useSync(), auth = getAuth()
   const live = !!auth?.workspace, owner = auth?.workspace?.role === 'Owner'
   const act = fn => fn().catch(e => toast(e.message))
+  const [link, setLink] = useState('')
   const papers = scope === 'all' ? state.papers : scope === 'starred' ? state.papers.filter(p => p.starred) : state.papers.filter(p => state.collections.find(c => c.id === scope)?.paperIds.includes(p.id))
   const label = scope === 'all' ? 'Library' : scope === 'starred' ? 'Starred' : state.collections.find(c => c.id === scope)?.name
   const done = f => { dispatch({ type: 'log', text: `exported ${papers.length} papers as ${f}` }); toast(`Exported ${f}`) }
@@ -50,19 +51,24 @@ export default function ExportCollab() {
           {live ? <div className="card">
             <div className="row between"><h3 style={{ margin: 0 }}>Team · {auth.workspace.name}</h3><SyncBadge /></div>
             <div className="stack" style={{ marginTop: 12 }}>{sync.members.map(m => (
-              <div key={m.email} className="row">
-                <span style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--violet)', color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 12 }}>{(m.name || m.email)[0].toUpperCase()}</span>
-                <span className="grow">{m.name} <span className="muted tiny">{m.email}</span> {m.email === auth.user.email && <span className="muted">(You)</span>} {!m.joined && <span className="tag">invited</span>}</span>
+              <div key={m.id} className="row">
+                <span style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--violet)', color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: 12 }}>{(m.name || '?')[0].toUpperCase()}</span>
+                <span className="grow">{m.name} <span className="muted tiny">{m.email}</span> {m.id === auth.user.id && <span className="muted">(You)</span>}</span>
                 {m.role === 'Owner' || !owner ? <span className="mono tiny">{m.role}</span> : <>
-                  <select className="input" style={{ width: 'auto', padding: '3px 6px' }} value={m.role} onChange={e => act(() => setMemberRole(m.email, e.target.value))}>{['Editor', 'Commenter', 'Viewer'].map(r => <option key={r}>{r}</option>)}</select>
-                  <button className="star" onClick={() => confirm(`Remove ${m.email}?`) && act(() => removeMember(m.email))}><X size={14} /></button></>}
+                  <select className="input" style={{ width: 'auto', padding: '3px 6px' }} value={m.role} onChange={e => act(() => setMemberRole(m.id, e.target.value))}>{['Editor', 'Commenter', 'Viewer'].map(r => <option key={r}>{r}</option>)}</select>
+                  <button className="star" onClick={() => confirm(`Remove ${m.name}?`) && act(() => removeMember(m.id))}><X size={14} /></button></>}
               </div>))}
+              {owner && sync.invites.map(i => <div key={i.id} className="row small muted"><span className="tag">pending link</span><span className="grow">{i.label || 'Unnamed invite'} · {i.role} · {ago(i.at)}</span><button className="star" title="Revoke link" onClick={() => act(() => revokeInvite(i.id))}><X size={14} /></button></div>)}
             </div>
-            {owner && <form className="row" style={{ marginTop: 12 }} onSubmit={e => { e.preventDefault(); const em = invite.name.trim(); em && act(() => inviteMember(em, invite.role).then(() => { setInvite({ name: '', role: 'Viewer' }); dispatch({ type: 'log', text: `invited ${em}` }); toast('Invited — they get access when they sign up / sign in with that email') })) }}>
-              <input className="input" type="email" placeholder="teammate@email.com" value={invite.name} onChange={e => setInvite({ ...invite, name: e.target.value })} />
+            {owner && <form className="row" style={{ marginTop: 12 }} onSubmit={e => { e.preventDefault(); act(() => createInvite(invite.role, invite.name.trim()).then(url => { setLink(url); setInvite({ name: '', role: 'Viewer' }); dispatch({ type: 'log', text: `created an invite link${invite.name.trim() ? ` for ${invite.name.trim()}` : ''}` }) })) }}>
+              <input className="input" placeholder="Who is it for? (label, optional)" value={invite.name} onChange={e => setInvite({ ...invite, name: e.target.value })} />
               <select className="input" style={{ width: 'auto' }} value={invite.role} onChange={e => setInvite({ ...invite, role: e.target.value })}><option>Editor</option><option>Commenter</option><option>Viewer</option></select>
-              <button className="btn dark"><UserPlus size={14} /> Invite</button>
+              <button className="btn dark"><UserPlus size={14} /> Create link</button>
             </form>}
+            {link && <div className="card flat small" style={{ marginTop: 10 }}>
+              <div className="row"><input className="input mono tiny grow" readOnly value={link} onFocus={e => e.target.select()} /><button className="btn sm" onClick={() => navigator.clipboard.writeText(link).then(() => toast('Link copied'))}>Copy</button></div>
+              <div className="muted tiny" style={{ marginTop: 4 }}>Send this to your teammate. It works once, for 7 days, and is shown only now.</div>
+            </div>}
             <p className="muted tiny">Editors' changes appear live for everyone. Viewers and commenters get read-only access.</p>
           </div> : <div className="card">
             <h3>Collaborate</h3>

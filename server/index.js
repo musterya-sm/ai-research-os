@@ -21,6 +21,11 @@ await fs.mkdir(path.join(DATA, 'pdf'), { recursive: true })
 // ---- tiny JSON "database" ---------------------------------------------------------------
 const DB_FILE = path.join(DATA, 'db.json')
 const db = existsSync(DB_FILE) ? JSON.parse(await fs.readFile(DB_FILE, 'utf8')) : { users: {}, sessions: {}, workspaces: {} }
+// Membership is keyed by user id. Older files keyed it by email: keep only members whose account exists.
+for (const ws of Object.values(db.workspaces)) {
+  ws.members = ws.members.map(m => m.userId ? m : { userId: Object.values(db.users).find(u => u.email === m.email)?.id, role: m.role }).filter(m => m.userId)
+  ws.invites ||= []
+}
 let saving = Promise.resolve()
 // Serialised atomic writes: write a temp file, then rename over the original.
 const writeJson = (file, data) => (saving = saving.then(async () => { const tmp = `${file}.${process.pid}.tmp`; await fs.writeFile(tmp, JSON.stringify(data)); await fs.rename(tmp, file) }))
@@ -49,8 +54,9 @@ async function readJson(req, limit) {
   try { return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}') } catch { fail(400, 'Invalid JSON') }
 }
 
-function authUser(req, url) {
-  const token = (req.headers.authorization || '').replace(/^Bearer /, '') || url.searchParams.get('token') || ''
+// Session tokens are accepted only from the Authorization header, never from URLs (which end up in logs).
+function authUser(req) {
+  const token = (req.headers.authorization || '').replace(/^Bearer /, '')
   const s = token && db.sessions[sha(token)]
   const u = s && db.users[s.userId]
   if (!u) fail(401, 'Not signed in')
@@ -60,7 +66,7 @@ function authUser(req, url) {
 function membership(wsId, user) {
   const ws = db.workspaces[wsId]
   if (!ws) fail(404, 'Workspace not found')
-  const m = ws.members.find(m => m.email === user.email)
+  const m = ws.members.find(m => m.userId === user.id)
   if (!m) fail(403, 'Not a member of this workspace')
   return { ws, role: m.role }
 }
@@ -80,8 +86,19 @@ function broadcast(wsId, event) {
   for (const res of streams.get(wsId) || []) res.write(`data: ${JSON.stringify(event)}\n\n`)
 }
 
-const wsSummary = (ws, email) => ({ id: ws.id, name: ws.name, version: ws.version, updatedAt: ws.updatedAt, role: ws.members.find(m => m.email === email)?.role })
-const membersOut = ws => ws.members.map(m => { const u = userByEmail(m.email); return { email: m.email, role: m.role, name: u?.name || m.email, joined: !!u } })
+// EventSource can't send headers, so the stream authenticates with a single-use ticket valid for 30s.
+const tickets = new Map() // sha(ticket) -> { userId, wsId, exp }
+
+// Invites are single-use links (7 days) rather than email matches: emails aren't verified, so binding
+// access to an address would let anyone who signs up with it claim the seat.
+const INVITE_TTL = 7 * 864e5
+const liveInvites = ws => (ws.invites = ws.invites.filter(i => Date.now() - i.at < INVITE_TTL))
+
+const wsSummary = (ws, user) => ({ id: ws.id, name: ws.name, version: ws.version, updatedAt: ws.updatedAt, role: ws.members.find(m => m.userId === user.id)?.role })
+const membersOut = ws => ({
+  members: ws.members.map(m => { const u = db.users[m.userId]; return { id: m.userId, email: u?.email || '', name: u?.name || 'Deleted user', role: m.role } }),
+  invites: liveInvites(ws).map(i => ({ id: i.id, label: i.label, role: i.role, at: i.at })),
+})
 
 // ---- routes -----------------------------------------------------------------------------
 async function api(req, res, url) {
@@ -113,22 +130,51 @@ async function api(req, res, url) {
     return send(res, 200, { token, user: pubUser(user) })
   }
 
-  const user = authUser(req, url)
+  // SSE stream: authenticated by ticket (see events-ticket below).
+  if (parts[0] === 'workspaces' && parts[2] === 'events' && M === 'GET') {
+    const key = sha(url.searchParams.get('ticket') || '')
+    const t = tickets.get(key)
+    tickets.delete(key)
+    if (!t || t.exp < Date.now() || t.wsId !== parts[1]) fail(401, 'Invalid or expired ticket')
+    const { ws } = membership(t.wsId, db.users[t.userId] || fail(401, 'Not signed in'))
+    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' })
+    res.write(`data: ${JSON.stringify({ type: 'hello', version: ws.version })}\n\n`)
+    if (!streams.has(ws.id)) streams.set(ws.id, new Set())
+    const entry = Object.assign(res, { userId: t.userId })
+    streams.get(ws.id).add(entry)
+    const ping = setInterval(() => res.write(': ping\n\n'), 25000)
+    req.on('close', () => { clearInterval(ping); streams.get(ws.id)?.delete(entry) })
+    return
+  }
+
+  const user = authUser(req)
 
   if (parts[0] === 'me' && M === 'GET') {
-    const workspaces = Object.values(db.workspaces).filter(w => w.members.some(m => m.email === user.email)).map(w => wsSummary(w, user.email))
+    const workspaces = Object.values(db.workspaces).filter(w => w.members.some(m => m.userId === user.id)).map(w => wsSummary(w, user))
     return send(res, 200, { user: pubUser(user), workspaces })
+  }
+
+  if (parts[0] === 'invites' && parts[2] === 'accept' && M === 'POST') {
+    const h = sha(decodeURIComponent(parts[1] || ''))
+    const ws = Object.values(db.workspaces).find(w => liveInvites(w).some(i => i.hash === h))
+    if (!ws) fail(404, 'This invite link is invalid, expired or already used')
+    const inv = ws.invites.find(i => i.hash === h)
+    ws.invites = ws.invites.filter(i => i !== inv)
+    if (!ws.members.some(m => m.userId === user.id)) ws.members.push({ userId: user.id, role: inv.role })
+    await saveDb()
+    broadcast(ws.id, { type: 'members' })
+    return send(res, 200, wsSummary(ws, user))
   }
 
   if (parts[0] !== 'workspaces') fail(404, 'Not found')
 
   if (parts.length === 1 && M === 'POST') {
     const b = await readJson(req, 25e6)
-    const ws = { id: newId(9), name: String(b.name || 'My workspace').slice(0, 80), owner: user.id, members: [{ email: user.email, role: 'Owner' }], version: 1, updatedAt: Date.now() }
+    const ws = { id: newId(9), name: String(b.name || 'My workspace').slice(0, 80), owner: user.id, members: [{ userId: user.id, role: 'Owner' }], invites: [], version: 1, updatedAt: Date.now() }
     db.workspaces[ws.id] = ws
     await writeJson(wsFile(ws.id), b.doc && typeof b.doc === 'object' ? b.doc : {})
     await saveDb()
-    return send(res, 201, wsSummary(ws, user.email))
+    return send(res, 201, wsSummary(ws, user))
   }
 
   const wsId = parts[1]
@@ -138,13 +184,13 @@ async function api(req, res, url) {
 
   if (!sub && M === 'GET') {
     const doc = JSON.parse(await fs.readFile(wsFile(ws.id), 'utf8').catch(() => '{}'))
-    return send(res, 200, { ...wsSummary(ws, user.email), doc, members: membersOut(ws) })
+    return send(res, 200, { ...wsSummary(ws, user), doc, members: membersOut(ws) })
   }
   if (!sub && M === 'PATCH') {
     if (role !== 'Owner') fail(403, 'Only the owner can rename the workspace')
     const b = await readJson(req, 10_000)
     ws.name = String(b.name || ws.name).slice(0, 80); await saveDb()
-    return send(res, 200, wsSummary(ws, user.email))
+    return send(res, 200, wsSummary(ws, user))
   }
 
   if (sub === 'doc' && M === 'PUT') {
@@ -162,39 +208,39 @@ async function api(req, res, url) {
     return send(res, 200, { version: ws.version })
   }
 
-  if (sub === 'events' && M === 'GET') {
-    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' })
-    res.write(`data: ${JSON.stringify({ type: 'hello', version: ws.version })}\n\n`)
-    if (!streams.has(ws.id)) streams.set(ws.id, new Set())
-    streams.get(ws.id).add(res)
-    const ping = setInterval(() => res.write(': ping\n\n'), 25000)
-    req.on('close', () => { clearInterval(ping); streams.get(ws.id)?.delete(res) })
-    return
+  if (sub === 'events-ticket' && M === 'POST') {
+    const ticket = newId(24), now = Date.now()
+    for (const [k, t] of tickets) if (t.exp < now) tickets.delete(k)
+    tickets.set(sha(ticket), { userId: user.id, wsId: ws.id, exp: now + 30_000 })
+    return send(res, 200, { ticket })
   }
 
-  if (sub === 'members') {
-    const email = decodeURIComponent(parts[3] || '').toLowerCase()
+  if (sub === 'members' || sub === 'invites') {
+    const target = decodeURIComponent(parts[3] || '')
     if (M === 'GET') return send(res, 200, membersOut(ws))
     if (role !== 'Owner') fail(403, 'Only the owner can manage members')
-    if (M === 'POST') {
+    let token
+    if (sub === 'invites' && M === 'POST') {
       const b = await readJson(req, 10_000)
-      const e = String(b.email || '').trim().toLowerCase()
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) fail(400, 'Enter a valid email')
-      if (ws.members.some(m => m.email === e)) fail(409, 'Already a member')
-      ws.members.push({ email: e, role: ROLES.includes(b.role) ? b.role : 'Viewer' })
-    } else if (M === 'PATCH') {
+      token = newId(24)
+      ws.invites.push({ id: newId(6), hash: sha(token), role: ROLES.includes(b.role) ? b.role : 'Viewer', label: String(b.label || '').slice(0, 120), at: Date.now() })
+    } else if (sub === 'invites' && M === 'DELETE') {
+      ws.invites = ws.invites.filter(i => i.id !== target)
+    } else if (sub === 'members' && M === 'PATCH') {
       const b = await readJson(req, 10_000)
-      const m = ws.members.find(m => m.email === email)
+      const m = ws.members.find(m => m.userId === target)
       if (!m || m.role === 'Owner') fail(400, 'Cannot change this member')
       if (!ROLES.includes(b.role)) fail(400, 'Unknown role')
       m.role = b.role
-    } else if (M === 'DELETE') {
-      if (email === user.email) fail(400, 'The owner cannot be removed')
-      ws.members = ws.members.filter(m => m.email !== email)
+    } else if (sub === 'members' && M === 'DELETE') {
+      if (target === user.id) fail(400, 'The owner cannot be removed')
+      ws.members = ws.members.filter(m => m.userId !== target)
+      // Cut off the removed member's live stream immediately.
+      for (const r of streams.get(ws.id) || []) if (r.userId === target) r.end()
     } else fail(405, 'Method not allowed')
     await saveDb()
     broadcast(ws.id, { type: 'members' })
-    return send(res, 200, membersOut(ws))
+    return send(res, 200, { ...membersOut(ws), ...(token ? { token } : {}) })
   }
 
   if (sub === 'pdfs') {

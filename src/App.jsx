@@ -21,6 +21,7 @@ import Feed from './views/Feed.jsx'
 import Settings from './views/Settings.jsx'
 import Notebook from './views/Notebook.jsx'
 import Writing from './views/Writing.jsx'
+import Join from './views/Join.jsx'
 import { useStore } from './lib/store.jsx'
 import { checkReminder } from './lib/reminder.js'
 import { SyncBadge } from './components/SyncPanel.jsx'
@@ -69,7 +70,7 @@ export default function App() {
   }, [state.settings.reminder, state.settings.reminderTime, state.highlights])
 
   const [name, arg, sub] = route
-  const View = name === 'home' ? Landing : name === 'paper' ? PaperView : ROUTES.find(r => r[0] === name)?.[3] || Dashboard
+  const View = name === 'home' ? Landing : name === 'paper' ? PaperView : name === 'join' ? Join : ROUTES.find(r => r[0] === name)?.[3] || Dashboard
 
   return (
     <div className="app">

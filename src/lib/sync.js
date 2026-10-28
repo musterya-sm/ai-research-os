@@ -14,7 +14,7 @@ const save = (k, v) => { try { v == null ? localStorage.removeItem(k) : localSto
 
 let auth = load(AUTH_KEY, null)
 let base = load(BASE_KEY, null)
-let status = { state: auth?.workspace ? 'connecting' : 'off', members: [], error: '', at: 0 }
+let status = { state: auth?.workspace ? 'connecting' : 'off', members: [], invites: [], error: '', at: 0 }
 const subs = new Set()
 const emit = patch => { status = { ...status, ...patch }; subs.forEach(f => f()) }
 const setAuth = a => { auth = a; save(AUTH_KEY, a); emit({}) }
@@ -65,10 +65,20 @@ export async function createWorkspace(name, doc) {
 export function leaveWorkspace() { stopLive(); setAuth({ ...auth, workspace: null }); setBase(null); emit({ state: 'off', members: [] }) }
 
 const wsPath = p => `/workspaces/${auth.workspace.id}${p}`
-const refreshMembers = async () => emit({ members: (await api(wsPath('/members'))).data })
-export const inviteMember = async (email, role) => emit({ members: (await api(wsPath('/members'), { method: 'POST', body: { email, role } })).data })
-export const setMemberRole = async (email, role) => emit({ members: (await api(wsPath(`/members/${encodeURIComponent(email)}`), { method: 'PATCH', body: { role } })).data })
-export const removeMember = async email => emit({ members: (await api(wsPath(`/members/${encodeURIComponent(email)}`), { method: 'DELETE' })).data })
+const roster = data => { emit({ members: data.members, invites: data.invites }); return data }
+const refreshMembers = async () => roster((await api(wsPath('/members'))).data)
+// Returns a single-use join link to hand to the teammate (valid 7 days).
+export async function createInvite(role, label) {
+  const { token } = roster((await api(wsPath('/invites'), { method: 'POST', body: { role, label } })).data)
+  return `${location.origin}${location.pathname}#/join/${token}`
+}
+export const revokeInvite = async id => roster((await api(wsPath(`/invites/${encodeURIComponent(id)}`), { method: 'DELETE' })).data)
+export const setMemberRole = async (id, role) => roster((await api(wsPath(`/members/${encodeURIComponent(id)}`), { method: 'PATCH', body: { role } })).data)
+export const removeMember = async id => roster((await api(wsPath(`/members/${encodeURIComponent(id)}`), { method: 'DELETE' })).data)
+export async function acceptInvite(token) {
+  const { data } = await api(`/invites/${encodeURIComponent(token)}/accept`, { method: 'POST' })
+  return data
+}
 
 // ---- merge ---------------------------------------------------------------------------------
 export const pick = s => Object.fromEntries(SHARED.filter(k => s[k] !== undefined).map(k => [k, s[k]]))
@@ -121,7 +131,7 @@ export function startEngine(get, apply) {
 async function pull() {
   const { data } = await api(wsPath(''))
   auth.workspace.role = data.role; setAuth({ ...auth })
-  emit({ members: data.members })
+  roster(data.members)
   const local = pick(getState())
   const merged = base ? merge3(base.doc, local, data.doc) : { ...local, ...data.doc } // no base → adopt remote
   setBase({ version: data.version, doc: data.doc })
@@ -158,18 +168,29 @@ async function push() {
   }
 }
 
-function startLive() {
+// The stream URL carries a short-lived single-use ticket, never the session token. Tickets can't be
+// reused, so on any error we close the stream and reconnect with a fresh one.
+let liveTimer, liveGen = 0
+async function startLive() {
   stopLive()
-  const url = `${auth.server || ''}/api${wsPath('/events')}?token=${encodeURIComponent(auth.token)}`
-  es = new EventSource(url)
-  es.onmessage = e => {
-    const ev = JSON.parse(e.data)
-    if (ev.type === 'update' && ev.client !== clientId && ev.version > version) pull().catch(() => {})
-    if (ev.type === 'members') refreshMembers().catch(() => {})
+  const gen = ++liveGen
+  try {
+    const { data } = await api(wsPath('/events-ticket'), { method: 'POST' })
+    if (gen !== liveGen) return
+    es = new EventSource(`${auth.server || ''}/api${wsPath('/events')}?ticket=${encodeURIComponent(data.ticket)}`)
+    es.onmessage = e => {
+      const ev = JSON.parse(e.data)
+      if (ev.type === 'hello' && ev.version > version) pull().catch(() => {})
+      if (ev.type === 'update' && ev.client !== clientId && ev.version > version) pull().catch(() => {})
+      if (ev.type === 'members') refreshMembers().catch(e => e.status === 403 && (leaveWorkspace(), emit({ error: 'You were removed from this workspace' })))
+    }
+    es.onerror = () => { stopLive(); if (!navigator.onLine) emit({ state: 'offline' }); liveTimer = setTimeout(() => auth?.workspace && gen === liveGen && startLive(), 3000) }
+  } catch (e) {
+    if (e.status === 403) return leaveWorkspace()
+    liveTimer = setTimeout(() => auth?.workspace && gen === liveGen && startLive(), 5000)
   }
-  es.onerror = () => emit({ state: navigator.onLine ? status.state : 'offline' })
 }
-function stopLive() { es?.close(); es = null }
+function stopLive() { clearTimeout(liveTimer); es?.close(); es = null }
 
 // Upload PDFs that exist only in this browser (editors only).
 let remotePdfs = null, pdfBusy = false
