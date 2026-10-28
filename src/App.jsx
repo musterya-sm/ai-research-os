@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Home, NotebookPen, PenLine, LayoutDashboard, Library, Network, Search, TableProperties, Radar, Lightbulb, Swords, History, Bot, Share2, Workflow, Boxes, Rss, Settings as Cog } from 'lucide-react'
+import { Home, HelpCircle, NotebookPen, PenLine, LayoutDashboard, Library, Network, Search, TableProperties, Radar, Lightbulb, Swords, History, Bot, Share2, Workflow, Boxes, Rss, Settings as Cog } from 'lucide-react'
 import { nav } from './components/ui.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import Landing from './views/Landing.jsx'
@@ -22,6 +22,7 @@ import Settings from './views/Settings.jsx'
 import Notebook from './views/Notebook.jsx'
 import Writing from './views/Writing.jsx'
 import Join from './views/Join.jsx'
+import Tour, { startTour } from './components/Tour.jsx'
 import { useStore } from './lib/store.jsx'
 import { checkReminder } from './lib/reminder.js'
 import { SyncBadge } from './components/SyncPanel.jsx'
@@ -86,8 +87,10 @@ export default function App() {
             </button>
           </span>
         ))}
+        <button data-tour="help" onClick={() => startTour()}><HelpCircle size={19} /><span className="tip">Take the tour</span></button>
       </nav>
       <div className="sync-float"><SyncBadge /></div>
+      <Tour />
       <main><ErrorBoundary key={[name, arg, sub].join('/')}><View arg={arg} sub={sub} /></ErrorBoundary></main>
     </div>
   )

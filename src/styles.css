@@ -158,3 +158,15 @@ a.wikilink { color: var(--violet); text-decoration: none; border-bottom: 1.5px s
   .tabs { overflow-x: auto; flex-wrap: nowrap; }
   .sync-float { top: auto; bottom: 66px; right: 10px; }
 }
+
+/* Product tour */
+.tour { position: fixed; inset: 0; z-index: 150; }
+.tour-dim { position: fixed; inset: 0; background: rgba(13, 13, 13, .55); }
+.tour-spot { position: fixed; border: 3px solid var(--lime); box-shadow: 0 0 0 9999px rgba(13, 13, 13, .55); transition: all .25s ease; pointer-events: none; }
+.tour-card { position: fixed; background: var(--panel); color: var(--ink); border: 2px solid var(--line); box-shadow: 6px 6px 0 var(--violet); padding: 14px 16px; transition: left .25s ease, top .25s ease; }
+.tour-card.sheet { left: 10px; right: 10px; bottom: calc(70px + env(safe-area-inset-bottom)); }
+.tour-dots { display: flex; flex-wrap: wrap; gap: 4px; margin: 12px 0 10px; }
+.tour-dots button { width: 9px; height: 9px; padding: 0; border: 1.5px solid var(--line); background: transparent; cursor: pointer; }
+.tour-dots button.seen { background: var(--soft); }
+.tour-dots button.on { background: var(--violet); border-color: var(--violet); width: 20px; }
+@media (prefers-reduced-motion: reduce) { .tour-spot, .tour-card { transition: none; } }

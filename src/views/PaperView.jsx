@@ -65,7 +65,7 @@ export default function PaperView({ arg, sub }) {
             <div className="muted mono small" style={{ marginTop: 6 }}>{authorLine(p)} · {p.citations ? `~${p.citations} citations` : 'citations n/a'}</div>
             <div style={{ marginTop: 8 }}><Tags tags={p.tags} /></div>
             <div className="row" style={{ marginTop: 8 }}>
-              <select className="input" style={{ width: 'auto', padding: '4px 8px' }} value={p.status || ''} onChange={e => dispatch({ type: 'updatePaper', id: p.id, patch: { status: e.target.value || undefined } })}><option value="">No reading status</option>{Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+              <select data-tour="status" className="input" style={{ width: 'auto', padding: '4px 8px' }} value={p.status || ''} onChange={e => dispatch({ type: 'updatePaper', id: p.id, patch: { status: e.target.value || undefined } })}><option value="">No reading status</option>{Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
               {progressOf(p) > 0 && <span className="mono tiny muted"><Progress p={p} /> p.{p.readPos?.page || p.readMax} of {p.pages}</span>}
               {p.hasPdf && p.readPos && tab !== 'pdf' && <button className="btn sm violet" onClick={() => { setPdfPage(undefined); setTab('pdf') }}>Continue reading →</button>}
             </div>

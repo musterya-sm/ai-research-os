@@ -6,6 +6,7 @@ import { listPdfIds, deletePdf } from '../lib/pdfstore.js'
 import { workspaceJson, download } from '../lib/exporter.js'
 import SyncPanel from '../components/SyncPanel.jsx'
 import { showReminder } from '../lib/reminder.js'
+import { startTour, CHAPTERS } from '../components/Tour.jsx'
 
 const SECTIONS = ['Profile', 'Account & Sync', 'Preferences', 'Notifications', 'Integrations', 'API Keys', 'Billing', 'Data & Privacy']
 
@@ -33,6 +34,10 @@ export default function Settings({ arg }) {
             <label className="small">Email<input className="input" value={s.email} onChange={e => set({ email: e.target.value })} /></label>
           </div>}
           {sec === 'Preferences' && <div style={{ maxWidth: 520 }}>
+            <div className="card flat" style={{ marginBottom: 10 }}>
+              <div className="row between"><div><b>Product tour</b><div className="muted tiny">{s.tourDone ? 'Completed or skipped — take it again any time.' : 'Not finished yet.'}</div></div><button className="btn violet" onClick={() => startTour()}>Start tour</button></div>
+              <div className="row wrap" style={{ marginTop: 8, gap: 4 }}><span className="muted tiny">Jump to:</span>{CHAPTERS.map(c => <button key={c} className="btn sm" onClick={() => startTour(c)}>{c}</button>)}</div>
+            </div>
             <Row label="AI Summarization" k="autoSummarize" hint="Show TL;DR on every paper" />
             <Row label="Auto Cluster Concepts" k="autoCluster" />
             <Row label="Gap Detection Alerts" k="gapAlerts" />
