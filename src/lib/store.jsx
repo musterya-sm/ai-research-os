@@ -75,7 +75,17 @@ function reducer(s, a) {
     case 'removeMember': return { ...s, members: s.members.filter(m => m.id !== a.id) }
     case 'log': return { ...s, activity: log(a.text) }
     case 'settings': return { ...s, settings: { ...s.settings, ...a.patch } }
-    case 'import': return { ...initial(), ...a.state }
+    case 'import': {
+      // Imported files are untrusted: keep our own API key and coerce paper fields to expected types.
+      const str = v => (typeof v === 'string' ? v : '')
+      const papers = (Array.isArray(a.state.papers) ? a.state.papers : []).filter(p => p && typeof p.id === 'string' && typeof p.title === 'string').map(p => ({
+        ...p, arxiv: str(p.arxiv) || p.id, abstract: str(p.abstract), method: str(p.method), dataset: str(p.dataset), finding: str(p.finding), limitation: str(p.limitation), venue: str(p.venue),
+        year: Number(p.year) || 0, citations: Number(p.citations) || 0,
+        authors: Array.isArray(p.authors) ? p.authors.map(String) : [], tags: Array.isArray(p.tags) ? p.tags.map(String) : [],
+      }))
+      const { apiKey, ...settings } = a.state.settings || {}
+      return { ...initial(), ...a.state, papers, settings: { ...initial().settings, ...settings, apiKey: s.settings.apiKey } }
+    }
     case 'reset': return initial()
     default: return s
   }

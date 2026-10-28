@@ -1,4 +1,4 @@
-const esc = s => String(s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 const texEsc = s => String(s ?? '').replace(/([&%$#_{}])/g, '\\$1')
 
 export function download(name, content, type = 'text/plain') {
@@ -21,7 +21,7 @@ export function toLatex(papers, summary = '') {
 }
 
 export function toHtmlReport(papers, title = 'Research Report', summary = '') {
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>body{font-family:Georgia,serif;max-width:820px;margin:40px auto;line-height:1.5}table{border-collapse:collapse;width:100%;font-size:13px}td,th{border:1px solid #999;padding:6px;text-align:left}</style></head><body><h1>${esc(title)}</h1><p>${esc(summary)}</p><table><tr><th>Paper</th><th>Year</th><th>Method</th><th>Dataset</th><th>Finding</th><th>Limitation</th></tr>${papers.map(p => `<tr><td>${esc(p.title)}</td><td>${p.year}</td><td>${esc(p.method)}</td><td>${esc(p.dataset)}</td><td>${esc(p.finding)}</td><td>${esc(p.limitation)}</td></tr>`).join('')}</table></body></html>`
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>body{font-family:Georgia,serif;max-width:820px;margin:40px auto;line-height:1.5}table{border-collapse:collapse;width:100%;font-size:13px}td,th{border:1px solid #999;padding:6px;text-align:left}</style></head><body><h1>${esc(title)}</h1><p>${esc(summary)}</p><table><tr><th>Paper</th><th>Year</th><th>Method</th><th>Dataset</th><th>Finding</th><th>Limitation</th></tr>${papers.map(p => `<tr><td>${esc(p.title)}</td><td>${esc(p.year)}</td><td>${esc(p.method)}</td><td>${esc(p.dataset)}</td><td>${esc(p.finding)}</td><td>${esc(p.limitation)}</td></tr>`).join('')}</table></body></html>`
 }
 
 export function printPdf(html) {
@@ -30,4 +30,10 @@ export function printPdf(html) {
   w.document.write(html)
   w.document.close()
   setTimeout(() => w.print(), 300)
+}
+
+// Workspace JSON for sharing: never include the API key.
+export function workspaceJson(state) {
+  const { apiKey, ...settings } = state.settings
+  return JSON.stringify({ ...state, settings }, null, 2)
 }

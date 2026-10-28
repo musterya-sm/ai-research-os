@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { FileText, FileType, Sigma, Sheet, Braces, BookMarked, Upload, UserPlus, X } from 'lucide-react'
 import { Head, ago, toast } from '../components/ui.jsx'
 import { useStore } from '../lib/store.jsx'
-import { download, toCsv, toLatex, toBibtex, toHtmlReport, printPdf } from '../lib/exporter.js'
+import { workspaceJson, download, toCsv, toLatex, toBibtex, toHtmlReport, printPdf } from '../lib/exporter.js'
 
 export default function ExportCollab() {
   const { state, dispatch } = useStore()
@@ -18,7 +18,7 @@ export default function ExportCollab() {
     ['Word', FileType, () => download(`${label}.doc`, toHtmlReport(papers, `${label} — Research Report`), 'application/msword')],
     ['LaTeX', Sigma, () => download(`${label}.tex`, toLatex(papers))],
     ['CSV', Sheet, () => download(`${label}.csv`, toCsv(papers), 'text/csv')],
-    ['JSON', Braces, () => download('research-os-workspace.json', JSON.stringify(state, null, 2), 'application/json')],
+    ['JSON', Braces, () => download('research-os-workspace.json', workspaceJson(state), 'application/json')],
     ['BibTeX', BookMarked, () => download(`${label}.bib`, toBibtex(papers))],
   ]
   const importJson = async f => {

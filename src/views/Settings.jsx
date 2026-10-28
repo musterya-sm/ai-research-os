@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Head, Toggle, toast } from '../components/ui.jsx'
 import { useStore } from '../lib/store.jsx'
 import { askClaude } from '../lib/ai.js'
-import { download } from '../lib/exporter.js'
+import { workspaceJson, download } from '../lib/exporter.js'
 
 const SECTIONS = ['Profile', 'Preferences', 'Notifications', 'Integrations', 'API Keys', 'Billing', 'Data & Privacy']
 
@@ -50,7 +50,7 @@ export default function Settings() {
           {sec === 'Data & Privacy' && <div className="stack" style={{ maxWidth: 520 }}>
             <Row label="Share anonymous analytics" k="shareAnalytics" hint="Nothing is sent anywhere; this app has no backend" />
             <p className="small">{state.papers.length} papers, {state.collections.length} collections, {Object.keys(state.notes).length} notes stored locally.</p>
-            <div className="row"><button className="btn" onClick={() => download('research-os-workspace.json', JSON.stringify(state, null, 2), 'application/json')}>Export all data</button>
+            <div className="row"><button className="btn" onClick={() => download('research-os-workspace.json', workspaceJson(state), 'application/json')}>Export all data</button>
               <button className="btn" style={{ borderColor: 'var(--red)', color: 'var(--red)' }} onClick={() => confirm('Reset workspace to defaults? This deletes your papers, notes and canvas.') && (dispatch({ type: 'reset' }), toast('Workspace reset'))}>Reset workspace</button></div>
           </div>}
         </div>
