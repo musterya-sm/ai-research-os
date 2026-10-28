@@ -7,7 +7,7 @@ export function tokenize(text) {
     .map(t => t.replace(/(ies)$/, 'y').replace(/(ing|ed|es|s)$/, '') || t)
 }
 
-const docText = p => `${p.title} ${p.title} ${(p.tags || []).join(' ')} ${p.abstract} ${p.method || ''} ${p.finding || ''}`
+const docText = p => `${p.title} ${p.title} ${(p.tags || []).join(' ')} ${p.abstract} ${p.abstract} ${p.method || ''} ${p.finding || ''} ${p.body || ''}`
 
 export function buildIndex(papers) {
   const df = new Map()
@@ -141,4 +141,14 @@ export function detectGaps(papers, focus = 'Memory') {
     detail: g.both === 0 ? `No papers combine ${focus.toLowerCase()} with ${g.dim.toLowerCase()} in your library.`
       : `Only ${g.both} paper${g.both > 1 ? 's' : ''} combine ${focus.toLowerCase()} with ${g.dim.toLowerCase()} (≈${g.expected.toFixed(1)} expected).`,
   }))
+}
+
+// Best-matching passages of a long text for a query (used to ground answers in PDF body text).
+export function passages(text, query, n = 3, size = 700) {
+  if (!text) return []
+  const q = new Set(tokenize(query))
+  const chunks = []
+  for (let i = 0; i < text.length; i += size) chunks.push(text.slice(i, i + size + 100))
+  return chunks.map((c, i) => ({ c, i, score: tokenize(c).filter(t => q.has(t)).length }))
+    .filter(x => x.score > 0).sort((a, b) => b.score - a.score).slice(0, n).sort((a, b) => a.i - b.i).map(x => x.c.replace(/\s+/g, ' ').trim())
 }

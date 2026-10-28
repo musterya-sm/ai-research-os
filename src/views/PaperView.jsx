@@ -1,5 +1,8 @@
-import { useEffect, useState } from 'react'
-import { Star, ExternalLink, Trash2, Sparkles, FolderPlus } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Star, ExternalLink, Trash2, Sparkles, FolderPlus, Paperclip, Pencil } from 'lucide-react'
+import PdfViewer, { PdfThumbs } from '../components/PdfViewer.jsx'
+import { ingestPdf } from '../lib/ingest.js'
+import { deletePdf } from '../lib/pdfstore.js'
 import { Head, Modal, Tags, Prose, AiBadge, nav, authorLine, toast, useAI } from '../components/ui.jsx'
 import { useStore } from '../lib/store.jsx'
 import { summarize, keyPoints, similar } from '../lib/nlp.js'
@@ -13,6 +16,10 @@ export default function PaperView({ arg }) {
   const [collOpen, setCollOpen] = useState(false)
   const [tagText, setTagText] = useState('')
   const { run, busy, error } = useAI()
+  const [pdfPage, setPdfPage] = useState(1)
+  const [attaching, setAttaching] = useState(false)
+  const [editing, setEditing] = useState(null)
+  const fileRef = useRef()
   useEffect(() => { p && dispatch({ type: 'viewPaper', id: p.id }) }, [p?.id])
   if (!p) return <><Head n={4} title="Paper View" sub="Deep dive into any paper" /><div className="empty">Paper not found. <button className="btn sm" onClick={() => nav('/library')}>Open library</button></div></>
 
@@ -22,9 +29,21 @@ export default function PaperView({ arg }) {
   const sims = similar(index, p.id, 6)
   const inColls = state.collections.filter(c => c.paperIds.includes(p.id))
 
+  async function attach(file) {
+    if (!file) return
+    setAttaching(true)
+    try { await ingestPdf(file, { papers: state.papers, dispatch, attachTo: p.id }); toast('PDF attached'); setTab('pdf') } catch (e) { toast(`Upload failed: ${e.message}`) } finally { setAttaching(false) }
+  }
+  async function removePdf() {
+    if (!confirm('Remove the attached PDF?')) return
+    await deletePdf(p.id).catch(() => {})
+    dispatch({ type: 'updatePaper', id: p.id, patch: { hasPdf: false, pdfName: undefined, pdfPages: undefined, body: undefined } })
+    setTab('overview')
+  }
+
   async function deepSummary() {
     const out = await run({
-      prompt: `Write a structured deep summary of this paper with sections: TL;DR, Problem, Method, Results, Limitations, Open questions.\n\n${paperContext([p])}`,
+      prompt: `Write a structured deep summary of this paper with sections: TL;DR, Problem, Method, Results, Limitations, Open questions.\n\n${paperContext([p])}${p.body ? `\n\nFull text (truncated):\n${p.body.slice(0, 15000)}` : ''}`,
       fallback: () => [`## TL;DR`, tldr, `## Problem & Method`, `- ${p.method || 'See abstract'}`, `## Results`, `- ${p.finding || 'See abstract'}`, `## Limitations`, `- ${p.limitation || 'Not stated'}`, `## Open questions`, ...sims.slice(0, 2).map(s => `- How does this compare with **${s.paper.title.split(':')[0]}** (${s.paper.year})?`)].join('\n'),
     })
     setAi(a => ({ ...a, summary: out }))
@@ -44,10 +63,11 @@ export default function PaperView({ arg }) {
           </div>
           <div className="row">
             <button className={`star ${p.starred ? 'on' : ''}`} onClick={() => dispatch({ type: 'toggleStar', id: p.id })}><Star size={20} fill={p.starred ? 'currentColor' : 'none'} /></button>
-            <button className="star" title="Delete from library" onClick={() => confirm('Remove this paper from your library?') && (dispatch({ type: 'deletePaper', id: p.id }), nav('/library'))}><Trash2 size={18} /></button>
+            <button className="star" title="Edit details" onClick={() => setEditing({ title: p.title, authors: p.authors.join(', '), year: p.year, venue: p.venue, abstract: p.abstract, method: p.method || '', dataset: p.dataset || '', finding: p.finding || '', limitation: p.limitation || '' })}><Pencil size={17} /></button>
+            <button className="star" title="Delete from library" onClick={() => confirm('Remove this paper from your library?') && (deletePdf(p.id).catch(() => {}), dispatch({ type: 'deletePaper', id: p.id }), nav('/library'))}><Trash2 size={18} /></button>
           </div>
         </div>
-        <div className="tabs" style={{ marginTop: 14 }}>{['overview', 'summary', 'keypoints', 'figures', `citations`].map(t => <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{t === 'citations' ? `Citations (${p.citations || 0})` : t}</button>)}</div>
+        <div className="tabs" style={{ marginTop: 14 }}>{['overview', ...(p.hasPdf ? ['pdf'] : []), 'summary', 'keypoints', 'figures', `citations`].map(t => <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{t === 'citations' ? `Citations (${p.citations || 0})` : t === 'pdf' ? `PDF (${p.pdfPages || '?'} pp)` : t}</button>)}</div>
 
         {tab === 'overview' && <div className="grid g2">
           <div className="stack">
@@ -60,7 +80,10 @@ export default function PaperView({ arg }) {
             <div className="card flat small">
               <h3>Paper info</h3>
               <div>Venue: {p.venue}</div><div>Year: {p.year}</div><div>Citations: {p.citations || '—'}</div>
-              <div>PDF: <a href={`https://arxiv.org/abs/${p.arxiv}`} target="_blank" rel="noreferrer">[View]</a> <a href={`https://arxiv.org/pdf/${p.arxiv}`} target="_blank" rel="noreferrer">[Download]</a></div>
+              {p.hasPdf
+                ? <div>PDF: <a href="#" onClick={e => { e.preventDefault(); setTab('pdf') }}>[{p.pdfName}]</a> <a href="#" onClick={e => { e.preventDefault(); removePdf() }}>[Remove]</a></div>
+                : <div>PDF: {!/^(pdf-|local-)/.test(p.arxiv) && <><a href={`https://arxiv.org/abs/${p.arxiv}`} target="_blank" rel="noreferrer">[arXiv]</a> </>}<a href="#" onClick={e => { e.preventDefault(); fileRef.current.click() }}>{attaching ? 'uploading…' : '[Attach your PDF]'}</a></div>}
+              <input ref={fileRef} type="file" accept="application/pdf,.pdf" hidden onChange={e => { attach(e.target.files[0]); e.target.value = '' }} />
               <div style={{ marginTop: 8 }}>In: {inColls.length ? inColls.map(c => <span key={c.id} className="tag lime">{c.name}</span>) : <span className="muted">no collections</span>}</div>
               <form className="row" style={{ marginTop: 8 }} onSubmit={e => { e.preventDefault(); if (tagText.trim()) { dispatch({ type: 'updatePaper', id: p.id, patch: { tags: [...new Set([...p.tags, tagText.trim()])] } }); setTagText('') } }}>
                 <input className="input" placeholder="Add tag" value={tagText} onChange={e => setTagText(e.target.value)} /><button className="btn sm">Add</button>
@@ -79,13 +102,32 @@ export default function PaperView({ arg }) {
 
         {tab === 'keypoints' && <table className="data"><tbody>{[['Method', p.method], ['Dataset', p.dataset], ['Key finding', p.finding], ['Limitation', p.limitation], ['Concepts', p.tags.join(', ')]].map(([k, v]) => <tr key={k}><td className="mono tiny" style={{ width: 140 }}>{k.toUpperCase()}</td><td>{v || '—'}</td></tr>)}</tbody></table>}
 
-        {tab === 'figures' && <div className="stack"><p className="muted small">Figures are not extracted from PDFs locally; this diagram is generated from the paper's method fields. Open the PDF for original figures.</p><MethodDiagram steps={steps} big /></div>}
+        {tab === 'pdf' && p.hasPdf && <PdfViewer id={p.id} startPage={pdfPage} />}
+
+        {tab === 'figures' && <div className="stack">
+          {p.hasPdf ? <><p className="muted small">Pages of your uploaded PDF — click one to open it in the viewer.</p><PdfThumbs id={p.id} onPick={n => { setPdfPage(n); setTab('pdf') }} /></>
+            : <><p className="muted small">Attach the PDF to browse its pages here. Meanwhile, a diagram generated from the paper's method:</p><button className="btn sm" onClick={() => fileRef.current.click()}><Paperclip size={13} /> Attach PDF</button></>}
+          <MethodDiagram steps={steps} big />
+        </div>}
 
         {tab === 'citations' && <div className="stack">
           <p className="muted small">Most related papers in your library (by content similarity). <a href={`https://www.semanticscholar.org/arxiv/${p.arxiv}`} target="_blank" rel="noreferrer">See full citation graph on Semantic Scholar <ExternalLink size={11} /></a></p>
           {sims.map(s => <div key={s.paper.id} className="list-item" onClick={() => nav(`/paper/${s.paper.id}`)}><div className="grow"><div className="t small">{s.paper.title}</div><div className="mono tiny muted">{s.paper.year} · {s.paper.authors[0]}</div></div><span className="match">{Math.round(s.score * 100)}% sim</span></div>)}
         </div>}
       </div>
+
+      {editing && <Modal title="Edit paper details" onClose={() => setEditing(null)}>
+        <form className="stack" onSubmit={e => {
+          e.preventDefault()
+          dispatch({ type: 'updatePaper', id: p.id, patch: { ...editing, year: Number(editing.year) || p.year, authors: editing.authors.split(',').map(a => a.trim()).filter(Boolean) } })
+          setEditing(null); toast('Details saved')
+        }}>
+          {[['title', 'Title'], ['authors', 'Authors (comma separated)'], ['year', 'Year'], ['venue', 'Venue'], ['method', 'Method'], ['dataset', 'Dataset'], ['finding', 'Key finding'], ['limitation', 'Limitation']].map(([k, l]) =>
+            <label key={k} className="small">{l}<input className="input" type={k === 'year' ? 'number' : 'text'} value={editing[k]} onChange={e => setEditing({ ...editing, [k]: e.target.value })} /></label>)}
+          <label className="small">Abstract<textarea className="input" style={{ minHeight: 140 }} value={editing.abstract} onChange={e => setEditing({ ...editing, abstract: e.target.value })} /></label>
+          <button className="btn dark">Save</button>
+        </form>
+      </Modal>}
 
       {collOpen && <Modal title="Add to collection" onClose={() => setCollOpen(false)}>
         <div className="stack">

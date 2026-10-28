@@ -39,7 +39,7 @@ export function PaperRow({ paper, right, onClick }) {
     <div className="list-item" onClick={onClick || (() => nav(`/paper/${paper.id}`))}>
       <div className="thumb" />
       <div className="grow">
-        <div className="t">{paper.title}</div>
+        <div className="t">{paper.title} {paper.hasPdf && <span className="tag violet">PDF</span>}</div>
         <div className="muted tiny mono">{authorLine(paper)}</div>
         {right === undefined && <div style={{ marginTop: 6 }}><Tags tags={paper.tags} /></div>}
       </div>

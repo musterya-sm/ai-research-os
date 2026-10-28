@@ -2,11 +2,12 @@ import { useRef, useState } from 'react'
 import { FileText, FileType, Sigma, Sheet, Braces, BookMarked, Upload, UserPlus, X } from 'lucide-react'
 import { Head, ago, toast } from '../components/ui.jsx'
 import { useStore } from '../lib/store.jsx'
-import { workspaceJson, download, toCsv, toLatex, toBibtex, toHtmlReport, printPdf } from '../lib/exporter.js'
+import { workspaceJson, restorePdfs, download, toCsv, toLatex, toBibtex, toHtmlReport, printPdf } from '../lib/exporter.js'
 
 export default function ExportCollab() {
   const { state, dispatch } = useStore()
   const [scope, setScope] = useState('all')
+  const [withPdfs, setWithPdfs] = useState(false)
   const [invite, setInvite] = useState({ name: '', role: 'Viewer' })
   const file = useRef()
   const papers = scope === 'all' ? state.papers : scope === 'starred' ? state.papers.filter(p => p.starred) : state.papers.filter(p => state.collections.find(c => c.id === scope)?.paperIds.includes(p.id))
@@ -18,11 +19,11 @@ export default function ExportCollab() {
     ['Word', FileType, () => download(`${label}.doc`, toHtmlReport(papers, `${label} — Research Report`), 'application/msword')],
     ['LaTeX', Sigma, () => download(`${label}.tex`, toLatex(papers))],
     ['CSV', Sheet, () => download(`${label}.csv`, toCsv(papers), 'text/csv')],
-    ['JSON', Braces, () => download('research-os-workspace.json', workspaceJson(state), 'application/json')],
+    ['JSON', Braces, async () => download('research-os-workspace.json', await workspaceJson(state, { includePdfs: withPdfs }), 'application/json')],
     ['BibTeX', BookMarked, () => download(`${label}.bib`, toBibtex(papers))],
   ]
   const importJson = async f => {
-    try { const data = JSON.parse(await f.text()); if (!data.papers) throw new Error('not a workspace file'); dispatch({ type: 'import', state: data }); toast('Workspace imported') } catch (e) { toast(`Import failed: ${e.message}`) }
+    try { const { pdfs, ...data } = JSON.parse(await f.text()); if (!data.papers) throw new Error('not a workspace file'); const n = await restorePdfs(pdfs); dispatch({ type: 'import', state: data }); toast(`Workspace imported${n ? ` with ${n} PDFs` : ''}`) } catch (e) { toast(`Import failed: ${e.message}`) }
   }
 
   return (
@@ -36,6 +37,7 @@ export default function ExportCollab() {
             <div className="grid g3" style={{ marginTop: 14 }}>
               {OPTIONS.map(([n, Icon, fn]) => <button key={n} className="btn" style={{ flexDirection: 'column', padding: 16, gap: 8 }} onClick={() => { fn(); done(n) }}><Icon size={22} />{n}</button>)}
             </div>
+            <label className="row small" style={{ marginTop: 10 }}><input type="checkbox" checked={withPdfs} onChange={e => setWithPdfs(e.target.checked)} /> Include uploaded PDF files in JSON ({state.papers.filter(p => p.hasPdf).length}) — larger file, lets teammates open them</label>
             <p className="muted tiny">JSON exports the full workspace (papers, notes, canvas, hypotheses). PDF opens the print dialog.</p>
             <button className="btn sm" onClick={() => file.current.click()}><Upload size={13} /> Import workspace JSON</button>
             <input ref={file} type="file" accept="application/json" hidden onChange={e => e.target.files[0] && importJson(e.target.files[0])} />

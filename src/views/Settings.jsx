@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Head, Toggle, toast } from '../components/ui.jsx'
 import { useStore } from '../lib/store.jsx'
 import { askClaude } from '../lib/ai.js'
+import { listPdfIds, deletePdf } from '../lib/pdfstore.js'
 import { workspaceJson, download } from '../lib/exporter.js'
 
 const SECTIONS = ['Profile', 'Preferences', 'Notifications', 'Integrations', 'API Keys', 'Billing', 'Data & Privacy']
@@ -49,9 +50,9 @@ export default function Settings() {
           {sec === 'Billing' && <p>Local workspace — free. Claude usage is billed to your own Anthropic account.</p>}
           {sec === 'Data & Privacy' && <div className="stack" style={{ maxWidth: 520 }}>
             <Row label="Share anonymous analytics" k="shareAnalytics" hint="Nothing is sent anywhere; this app has no backend" />
-            <p className="small">{state.papers.length} papers, {state.collections.length} collections, {Object.keys(state.notes).length} notes stored locally.</p>
-            <div className="row"><button className="btn" onClick={() => download('research-os-workspace.json', workspaceJson(state), 'application/json')}>Export all data</button>
-              <button className="btn" style={{ borderColor: 'var(--red)', color: 'var(--red)' }} onClick={() => confirm('Reset workspace to defaults? This deletes your papers, notes and canvas.') && (dispatch({ type: 'reset' }), toast('Workspace reset'))}>Reset workspace</button></div>
+            <p className="small">{state.papers.length} papers, {state.collections.length} collections, {Object.keys(state.notes).length} notes, {state.papers.filter(p => p.hasPdf).length} PDFs stored locally.</p>
+            <div className="row"><button className="btn" onClick={async () => download('research-os-workspace.json', await workspaceJson(state, { includePdfs: true }), 'application/json')}>Export all data</button>
+              <button className="btn" style={{ borderColor: 'var(--red)', color: 'var(--red)' }} onClick={() => confirm('Reset workspace to defaults? This deletes your papers, notes and canvas.') && (listPdfIds().then(ids => Promise.all(ids.map(deletePdf))).catch(() => {}), dispatch({ type: 'reset' }), toast('Workspace reset'))}>Reset workspace</button></div>
           </div>}
         </div>
       </div>

@@ -1,12 +1,16 @@
 import { useState } from 'react'
-import { Download, Plus } from 'lucide-react'
+import { Download, Plus, Upload } from 'lucide-react'
 import { Modal, toast } from './ui.jsx'
 import { useStore } from '../lib/store.jsx'
 import { searchArxiv, parseBibtex, inferTags } from '../lib/arxiv.js'
+import { ingestPdf } from '../lib/ingest.js'
+import { nav } from './ui.jsx'
 
-export default function ImportModal({ onClose }) {
+export default function ImportModal({ onClose, initialTab = 'pdf' }) {
   const { state, dispatch } = useStore()
-  const [tab, setTab] = useState('arxiv')
+  const [tab, setTab] = useState(initialTab)
+  const [jobs, setJobs] = useState([])
+  const [drag, setDrag] = useState(false)
   const [q, setQ] = useState('')
   const [results, setResults] = useState([])
   const [busy, setBusy] = useState(false)
@@ -19,11 +23,41 @@ export default function ImportModal({ onClose }) {
     e.preventDefault(); setBusy(true); setErr('')
     try { setResults(await searchArxiv(q, 12)) } catch (x) { setErr(`${x.message}. Run the app with "npm run dev" so the arXiv proxy is available.`) } finally { setBusy(false) }
   }
+  async function upload(files) {
+    const list = [...files]
+    const base = jobs.length
+    setJobs(j => [...j, ...list.map(f => ({ name: f.name, status: 'queued', progress: 0 }))])
+    const upd = (i, patch) => setJobs(j => j.map((x, k) => (k === base + i ? { ...x, ...patch } : x)))
+    // Sequential: pdf.js is CPU-heavy and parallel parses make the page stutter.
+    for (const [i, f] of list.entries()) {
+      upd(i, { status: 'reading' })
+      try {
+        const r = await ingestPdf(f, { papers: state.papers, dispatch, onProgress: progress => upd(i, { progress }) })
+        upd(i, { status: r.attached ? 'attached to existing paper' : r.enriched ? 'added · matched arXiv' : 'added', id: r.id, progress: 1 })
+      } catch (e) { upd(i, { status: `failed: ${e.message}` }) }
+    }
+  }
   const add = ps => { dispatch({ type: 'addPapers', papers: ps }); toast(`Imported ${ps.length} paper${ps.length > 1 ? 's' : ''}`) }
 
   return (
     <Modal title="Import papers" onClose={onClose} wide>
-      <div className="tabs">{[['arxiv', 'arXiv search / ID'], ['bibtex', 'BibTeX'], ['manual', 'Manual']].map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
+      <div className="tabs">{[['pdf', 'Upload PDFs'], ['arxiv', 'arXiv search / ID'], ['bibtex', 'BibTeX'], ['manual', 'Manual']].map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
+      {tab === 'pdf' && <>
+        <label className="empty" style={{ display: 'block', cursor: 'pointer', borderColor: drag ? 'var(--violet)' : null, background: drag ? 'var(--soft)' : null }}
+          onDragOver={e => { e.preventDefault(); setDrag(true) }} onDragLeave={() => setDrag(false)} onDrop={e => { e.preventDefault(); setDrag(false); upload(e.dataTransfer.files) }}>
+          <Upload size={26} /><div style={{ marginTop: 8, fontWeight: 600, color: 'var(--ink)' }}>Drop PDFs here or click to choose</div>
+          <div className="small">Text is extracted in your browser. arXiv papers are auto-matched for metadata. Max 50 MB each.</div>
+          <input type="file" accept="application/pdf,.pdf" multiple hidden onChange={e => { upload(e.target.files); e.target.value = '' }} />
+        </label>
+        <div className="stack" style={{ marginTop: 12 }}>{jobs.map((j, i) => (
+          <div key={i} className="row small" style={{ borderBottom: '1.5px solid var(--soft)', paddingBottom: 6 }}>
+            <span className="grow mono tiny">{j.name}</span>
+            {j.status === 'reading' ? <span style={{ width: 90, height: 6, background: 'var(--soft)' }}><span style={{ display: 'block', height: 6, width: `${j.progress * 100}%`, background: 'var(--violet)' }} /></span>
+              : <span className={j.status.startsWith('failed') ? '' : 'match'} style={j.status.startsWith('failed') ? { color: 'var(--red)' } : null}>{j.status}</span>}
+            {j.id && <button className="btn sm" onClick={() => { onClose(); nav(`/paper/${encodeURIComponent(j.id)}`) }}>Open</button>}
+          </div>))}
+        </div>
+      </>}
       {tab === 'arxiv' && <>
         <form className="row" onSubmit={go}>
           <input className="input" autoFocus placeholder="e.g. agent memory  ·  or an arXiv ID like 2310.08560" value={q} onChange={e => setQ(e.target.value)} />

@@ -98,7 +98,9 @@ export function StoreProvider({ children }) {
     try { const saved = JSON.parse(localStorage.getItem(KEY)); if (saved?.papers) return { ...initial(), ...saved, settings: { ...initial().settings, ...saved.settings } } } catch {}
     return initial()
   })
-  useEffect(() => { try { localStorage.setItem(KEY, JSON.stringify(state)) } catch {} }, [state])
+  useEffect(() => {
+    try { localStorage.setItem(KEY, JSON.stringify(state)) } catch (e) { console.warn('Workspace not saved — browser storage full?', e) }
+  }, [state])
   useEffect(() => { document.documentElement.dataset.theme = state.settings.darkMode ? 'dark' : 'light' }, [state.settings.darkMode])
   const index = useMemo(() => buildIndex(state.papers), [state.papers])
   const value = useMemo(() => ({ state, dispatch, index }), [state, index])

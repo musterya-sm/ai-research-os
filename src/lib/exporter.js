@@ -32,8 +32,31 @@ export function printPdf(html) {
   setTimeout(() => w.print(), 300)
 }
 
-// Workspace JSON for sharing: never include the API key.
-export function workspaceJson(state) {
+// Workspace JSON for sharing: never include the API key. Optionally bundles uploaded PDFs as base64.
+export async function workspaceJson(state, { includePdfs = false } = {}) {
   const { apiKey, ...settings } = state.settings
-  return JSON.stringify({ ...state, settings }, null, 2)
+  const out = { ...state, settings }
+  if (includePdfs) {
+    const { getPdf } = await import('./pdfstore.js')
+    out.pdfs = {}
+    for (const p of state.papers.filter(p => p.hasPdf)) {
+      const rec = await getPdf(p.id).catch(() => null)
+      if (rec) out.pdfs[p.id] = { name: rec.name, pages: rec.pages, text: rec.text, data: await blobToBase64(rec.blob) }
+    }
+  }
+  return JSON.stringify(out, null, 2)
+}
+
+const blobToBase64 = blob => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(blob) })
+
+export async function restorePdfs(pdfs) {
+  const { putPdf } = await import('./pdfstore.js')
+  let n = 0
+  for (const [id, rec] of Object.entries(pdfs || {})) {
+    if (typeof rec?.data !== 'string') continue
+    const bytes = Uint8Array.from(atob(rec.data), c => c.charCodeAt(0))
+    await putPdf(id, { blob: new Blob([bytes], { type: 'application/pdf' }), name: String(rec.name || `${id}.pdf`), text: String(rec.text || ''), pages: Number(rec.pages) || 0 })
+    n++
+  }
+  return n
 }

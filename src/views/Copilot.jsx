@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Send, Trash2, User, Bot } from 'lucide-react'
 import { Head, Prose, AiBadge, useAI, nav } from '../components/ui.jsx'
 import { useStore } from '../lib/store.jsx'
-import { search, coverage } from '../lib/nlp.js'
+import { search, coverage, passages } from '../lib/nlp.js'
 import { paperContext } from '../lib/ai.js'
 
 const STARTERS = ['What are the main challenges in building memory systems for LLM agents?', 'Compare RAG and long-context approaches', 'Which papers should I read first on tool use?', 'Summarize how agent reflection has evolved']
@@ -13,6 +13,7 @@ function localAnswer(q, hits, all) {
   const lims = [...new Set(hits.map(h => h.paper.limitation).filter(Boolean))]
   const cov = coverage(hits.map(h => h.paper)).sort((a, b) => a.share - b.share)
   return [`Based on ${hits.length} relevant papers in your library:`, '', '## Key findings', ...hits.slice(0, 4).map((h, i) => `${i + 1}. **${h.paper.title.split(':')[0]}** (${h.paper.year}) — ${h.paper.finding || h.paper.abstract.slice(0, 100)} [${i + 1}]`),
+    ...hits.filter(h => h.paper.body).slice(0, 2).flatMap(h => { const ex = passages(h.paper.body, q, 1)[0]; return ex ? ['', `> From the PDF of **${h.paper.title.split(':')[0]}**: “${ex.slice(0, 320)}…”`] : [] }),
     '', '## Main challenges', ...lims.slice(0, 4).map((l, i) => `${i + 1}. **${l}**`), `${lims.length + 1}. **Coverage**: ${cov[0].key.toLowerCase()} is rarely addressed in these papers.`,
     '', `_Local retrieval answer over ${all} papers. Add a Claude API key in Settings for synthesized answers._`].join('\n')
 }
@@ -31,7 +32,7 @@ export default function Copilot() {
     dispatch({ type: 'chat', msg: { role: 'user', text } })
     const hits = search(index, text, 8)
     const history = state.chat.slice(-6).map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.text}`).join('\n')
-    const answer = await run({ maxTokens: 1500, prompt: `${history ? `Conversation so far:\n${history}\n\n` : ''}Question: ${text}\n\nRelevant papers from the user's library:\n${paperContext(hits.map(h => h.paper))}`, fallback: () => localAnswer(text, hits, state.papers.length) })
+    const answer = await run({ maxTokens: 1500, prompt: `${history ? `Conversation so far:\n${history}\n\n` : ''}Question: ${text}\n\nRelevant papers from the user's library:\n${paperContext(hits.map(h => h.paper), text)}`, fallback: () => localAnswer(text, hits, state.papers.length) })
     dispatch({ type: 'chat', msg: { role: 'ai', text: answer, sources: hits.slice(0, 5).map(h => h.paper.id) } })
   }
 
