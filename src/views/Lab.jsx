@@ -279,7 +279,7 @@ function SpecPanel({ spec, setSpec, paper }) {
         {!!spec.models?.length && <><div className="label">Models</div><div style={{ marginBottom: 8 }}>{spec.models.map(d => <span key={d} className="tag">{d}</span>)}</div></>}
         {!!spec.components.length && <><div className="label">To build</div><div style={{ marginBottom: 8 }}>{spec.components.map(d => <span key={d} className="tag lime">{d}</span>)}</div></>}
         {spec.compute && <><div className="label">Compute</div><p className="small" style={{ marginTop: 2 }}>{spec.compute}</p></>}
-        {!!spec.code.length && <><div className="label">Code</div>{spec.code.map(u => <div key={u} className="small"><a href={u} target="_blank" rel="noreferrer"><Github size={12} /> {u.replace(/^https?:\/\/(www\.)?github\.com\//, '')}</a></div>)}</>}
+        {!!spec.code.length && <><div className="label">Code</div>{spec.code.map(u => <div key={u} className="small"><a href={/^https:\/\//i.test(u) ? u : undefined} target="_blank" rel="noreferrer"><Github size={12} /> {u.replace(/^https?:\/\/(www\.)?github\.com\//, '')}</a></div>)}</>}
         {spec.baselines && <><div className="label" style={{ marginTop: 8 }}>Baselines</div><p className="small" style={{ marginTop: 2 }}>{spec.baselines}</p></>}
         {!!spec.related?.length && <><div className="label" style={{ marginTop: 8 }}>Closest papers</div>{spec.related.map(r => <div key={r.id} className="small"><a href={`#/paper/${encodeURIComponent(r.id)}`}>{r.title.split(':')[0]}</a> <span className="muted">{r.match}%</span></div>)}</>}
         {!paper?.body && !spec.related && <p className="muted tiny">Upload the PDF to this paper for exact hyperparameters, datasets and results.</p>}

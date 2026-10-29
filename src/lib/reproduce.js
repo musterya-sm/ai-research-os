@@ -31,7 +31,9 @@ export function normSpec(x = {}) {
   const txt = v => (typeof v === 'string' ? v : '')
   return {
     ...x, summary: txt(x.summary), compute: txt(x.compute), baselines: txt(x.baselines), training: !!x.training,
-    ...Object.fromEntries(['components', 'datasets', 'models', 'code', 'missing'].map(k => [k, list(x[k]).map(String)])),
+    ...Object.fromEntries(['components', 'datasets', 'models', 'missing'].map(k => [k, list(x[k]).map(String)])),
+    // Code links come from model output or a synced workspace: only plain https GitHub repo URLs are kept.
+    code: list(x.code).map(String).filter(u => /^https:\/\/(www\.)?github\.com\/[\w.-]+\/[\w.-]+\/?$/i.test(u)),
     hparams: list(x.hparams).filter(h => h && typeof h === 'object').map(h => ({ name: txt(h.name), value: txt(h.value), evidence: txt(h.evidence) })),
     metrics: list(x.metrics).filter(m => m && typeof m === 'object').map(m => ({ name: txt(m.name), paper: txt(m.paper), mine: txt(m.mine) })),
     related: list(x.related).filter(r => r && typeof r.id === 'string'),
@@ -56,7 +58,7 @@ export function extractSpec(paper) {
   const gpu = text.match(/(\d+\s*[×x]?\s*)?(?:NVIDIA\s*)?(A100|H100|V100|P100|K80|A6000|A10G|RTX\s?\d{4}|TPU\s?v\d|\bT4\b)\s*(?:GPUs?)?/)
   const hours = text.match(/(\d[\d,.]*)\s*(GPU[- ]hours|hours|days)/i)
   const compute = [gpu && gpu[0].trim(), hours && hours[0]].filter(Boolean).join(', ')
-  const code = uniq((text.match(/https?:\/\/(?:www\.)?github\.com\/[\w.-]+\/[\w.-]+/g) || []).map(u => u.replace(/[.)]+$/, ''))).slice(0, 4)
+  const code = uniq((text.match(/https:\/\/(?:www\.)?github\.com\/[\w.-]+\/[\w.-]+/g) || []).map(u => u.replace(/[.)]+$/, ''))).slice(0, 4)
   const core = sentencesOf(text).filter(s => /\b(we (propose|introduce|present|design)|our (method|approach|framework|system)|consists of|is composed of)\b/i.test(s) && s.length < 400).slice(0, 3)
   const components = uniq((paper.method || '').split(/,|\+|;| and | with /i).map(s => s.trim()).filter(s => s.length > 2)).slice(0, 5)
   const base = text.match(/(?:compar(?:e|ed|ing) (?:it |our method |our approach )?(?:to|with|against)|baselines? (?:include|such as|are)?:?)\s+([^.]{5,140})/i)
