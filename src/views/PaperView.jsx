@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Star, Trash2, Sparkles, FolderPlus, Paperclip, Pencil } from 'lucide-react'
+import { Star, Trash2, Sparkles, FolderPlus, Paperclip, Pencil, FlaskConical } from 'lucide-react'
 import PdfViewer, { PdfThumbs } from '../components/PdfViewer.jsx'
 import { ingestPdf } from '../lib/ingest.js'
 import { deletePdf } from '../lib/pdfstore.js'
@@ -57,6 +57,7 @@ export default function PaperView({ arg, sub }) {
     <>
       <Head n={4} title="Paper View" sub="Deep dive into any paper">
         <button className="btn" onClick={() => nav('/library')}>← Library</button>
+        <button className="btn violet" data-tour="reproduce" onClick={() => { const ex = state.projects.find(x => x.source.paperId === p.id); nav(ex ? `/lab/${ex.id}` : `/lab/new/paper:${encodeURIComponent(p.id)}`) }}><FlaskConical size={14} /> Reproduce this</button>
       </Head>
       <div className="card">
         <div className="row between" style={{ alignItems: 'flex-start' }}>

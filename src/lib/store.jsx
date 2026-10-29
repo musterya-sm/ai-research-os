@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, useRef } from 'react'
 import { SEED_PAPERS } from '../data/seed.js'
 import { buildIndex } from './nlp.js'
+import { normSpec } from './reproduce.js'
 import { SHARED, startEngine, schedulePush, getAuth, useSync } from './sync.js'
 
 const KEY = 'ai-research-os/v1'
@@ -34,6 +35,7 @@ const initial = () => ({
   // Terms form the dictionary; box/due drive Leitner-style flashcard review.
   highlights: [],
   drafts: [], // Writing Studio drafts
+  projects: [], // Reproduce Lab: { id, title, source, mode, spec, steps, chat, createdAt }
   review: { streak: 0, last: '', log: {} }, // daily flashcard streak; log = { 'YYYY-MM-DD': cards }
   chat: [],
   members: [
@@ -69,6 +71,7 @@ export function sanitizeDoc(d) {
   const out = { papers, highlights }
   if ('collections' in d) out.collections = arr(d.collections).filter(c => c && typeof c.id === 'string').map(c => ({ id: c.id, name: str(c.name), paperIds: arr(c.paperIds).map(String) }))
   if ('drafts' in d) out.drafts = arr(d.drafts).filter(x => x && typeof x.id === 'string').map(x => ({ ...x, title: str(x.title), body: str(x.body) }))
+  if ('projects' in d) out.projects = arr(d.projects).filter(x => x && typeof x.id === 'string' && x.spec && typeof x.spec === 'object').map(x => ({ ...x, title: str(x.title), spec: normSpec(x.spec), steps: arr(x.steps).filter(t => t && typeof t.id === 'string'), chat: arr(x.chat) }))
   if ('hypotheses' in d) out.hypotheses = arr(d.hypotheses).filter(x => x && typeof x.id === 'string')
   if ('activity' in d) out.activity = arr(d.activity).filter(x => x && typeof x.id === 'string').map(x => ({ ...x, who: str(x.who) || '?', text: str(x.text), at: Number(x.at) || 0 }))
   if (d.notes && typeof d.notes === 'object') out.notes = Object.fromEntries(Object.entries(d.notes).map(([k, v]) => [k, str(v)]))
@@ -131,6 +134,10 @@ function reducer(s, a) {
     case 'saveDraft': return a.draft.id && s.drafts.some(d => d.id === a.draft.id)
       ? { ...s, drafts: s.drafts.map(d => d.id === a.draft.id ? { ...d, ...a.draft, updatedAt: Date.now() } : d) }
       : { ...s, drafts: [{ ...a.draft, id: a.draft.id || uid(), updatedAt: Date.now() }, ...s.drafts], activity: log('started a writing draft') }
+    case 'saveProject': return s.projects.some(p => p.id === a.project.id)
+      ? { ...s, projects: s.projects.map(p => p.id === a.project.id ? { ...p, ...a.project, updatedAt: Date.now() } : p) }
+      : { ...s, projects: [{ ...a.project, createdAt: Date.now(), updatedAt: Date.now() }, ...s.projects], activity: log(`started a Reproduce Lab project: ${a.project.title.slice(0, 60)}`) }
+    case 'deleteProject': return { ...s, projects: s.projects.filter(p => p.id !== a.id) }
     case 'deleteDraft': return { ...s, drafts: s.drafts.filter(d => d.id !== a.id) }
     // Sync: replace shared collections with a merged copy from the server (already sanitized).
     case 'merge': return { ...s, ...a.doc }

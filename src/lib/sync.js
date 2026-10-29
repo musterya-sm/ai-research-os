@@ -4,7 +4,7 @@
 import { useSyncExternalStore } from 'react'
 import { getPdf, listPdfIds } from './pdfstore.js'
 
-export const SHARED = ['papers', 'collections', 'notes', 'canvas', 'hypotheses', 'highlights', 'drafts', 'activity']
+export const SHARED = ['papers', 'collections', 'notes', 'canvas', 'hypotheses', 'highlights', 'drafts', 'projects', 'activity']
 const AUTH_KEY = 'ai-research-os/auth' // { server, token, user, workspace: { id, name, role } }
 const BASE_KEY = 'ai-research-os/sync-base' // { version, doc }
 const clientId = Math.random().toString(36).slice(2)
