@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Home, HelpCircle, NotebookPen, PenLine, LayoutDashboard, Library, Network, Search, TableProperties, Radar, Lightbulb, Swords, History, Bot, Share2, Workflow, Boxes, Rss, FlaskConical, Settings as Cog } from 'lucide-react'
 import { nav } from './components/ui.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
+import Shared from './views/Shared.jsx'
 import Landing from './views/Landing.jsx'
 import Dashboard from './views/Dashboard.jsx'
 import PaperLibrary from './views/PaperLibrary.jsx'
@@ -74,6 +75,9 @@ export default function App() {
 
   const [name, arg, sub] = route
   const View = name === 'home' ? Landing : name === 'paper' ? PaperView : name === 'join' ? Join : ROUTES.find(r => r[0] === name)?.[3] || Dashboard
+
+  // Share links open as a standalone read-only page, without the rail or the tour.
+  if (name === 's') return <ErrorBoundary><Shared data={arg} /></ErrorBoundary>
 
   return (
     <div className="app">

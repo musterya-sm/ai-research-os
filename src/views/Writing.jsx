@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
-import { PenLine, Sparkles, Copy, Download, Trash2, Plus, Search } from 'lucide-react'
+import { PenLine, Sparkles, Copy, Download, Trash2, Plus, Search, Share2 } from 'lucide-react'
 import { Head, AiBadge, toast, useAI } from '../components/ui.jsx'
 import { useStore } from '../lib/store.jsx'
 import { KINDS, hlTitle, searchHighlights } from '../lib/highlights.js'
 import { citeKey, toBibtex, download } from '../lib/exporter.js'
+import { copyShare, shareDraft } from '../lib/share.js'
 
 const SECTIONS = { related: 'Related Work', background: 'Background', intro: 'Introduction', discussion: 'Discussion' }
 const STYLES = { latex: 'LaTeX \\cite{}', author: '(Author, Year)', numeric: '[1] numeric' }
@@ -124,6 +125,7 @@ export default function Writing() {
               <button className="btn sm" disabled={!body} onClick={() => download(`${draft?.title || 'draft'}.md`, body)}><Download size={13} /> .md</button>
               <button className="btn sm" disabled={!body} onClick={() => download(`${draft?.title || 'draft'}.tex`, `\\section{${SECTIONS[section]}}\n${body.replace(/^## .*\n/, '').replace(/\*\*(.+?)\*\*/g, '\\textbf{$1}').replace(/\*(.+?)\*/g, '\\emph{$1}').replace(/“|”/g, '"')}\n\n\\bibliographystyle{plain}\n\\bibliography{references}\n`)}><PenLine size={13} /> .tex</button>
               <button className="btn sm" disabled={!cited.length} onClick={() => download('references.bib', toBibtex(cited))}><Download size={13} /> references.bib ({cited.length})</button>
+              {draft && body && <button className="btn sm" title="Read-only link anyone can open" onClick={() => copyShare(shareDraft(state, { ...draft, body }), toast)}><Share2 size={13} /> Share link</button>}
               {draft && <button className="btn sm" onClick={() => confirm('Delete this draft?') && (dispatch({ type: 'deleteDraft', id: draft.id }), setDraftId(null))}><Trash2 size={13} /></button>}
             </div>
           </div>

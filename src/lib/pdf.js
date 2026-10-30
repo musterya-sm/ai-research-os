@@ -41,7 +41,7 @@ export async function extractPdf(file, onProgress) {
   const metaAuthors = meta.info?.Author?.trim() ? meta.info.Author.split(/,|;| and /).map(x => x.trim()).filter(Boolean) : null
   const names = guessed || metaAuthors || ['Unknown']
   return {
-    buf, text, numPages: doc.numPages, arxiv,
+    buf, text, pageTexts: pages, numPages: doc.numPages, arxiv,
     paper: {
       title, abstract, authors: names.length > 2 ? [names[0], 'et al.'] : names,
       year: +(meta.info?.CreationDate?.match(/D:(\d{4})/)?.[1]) || new Date().getFullYear(), tags: inferTags(title + ' ' + abstract),

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { Send, Trash2, User, Bot } from 'lucide-react'
+import { Send, Trash2, User, Bot, FileText, Library } from 'lucide-react'
 import { Head, Prose, AiBadge, useAI, nav } from '../components/ui.jsx'
 import { useStore } from '../lib/store.jsx'
 import { search, coverage, passages } from '../lib/nlp.js'
 import { paperContext } from '../lib/ai.js'
 import { searchHighlights, highlightsContext } from '../lib/highlights.js'
+import { askPdfs, pdfPrompt, localPdfAnswer, short } from '../lib/askpdfs.js'
 
 const STARTERS = ['What are the main challenges in building memory systems for LLM agents?', 'Compare RAG and long-context approaches', 'Which papers should I read first on tool use?', 'Summarize how agent reflection has evolved']
 
@@ -25,6 +26,9 @@ function localAnswer(q, hits, all, notes = []) {
 export default function Copilot() {
   const { state, dispatch, index } = useStore()
   const [q, setQ] = useState('')
+  const pdfCount = state.papers.filter(p => p.hasPdf).length
+  const [mode, setMode] = useState(pdfCount ? 'pdfs' : 'library')
+  const [reading, setReading] = useState(0)
   const { run, busy, error } = useAI()
   const end = useRef()
   // Scroll only the message pane; scrollIntoView would also scroll the document and push the shell off-screen.
@@ -34,9 +38,15 @@ export default function Copilot() {
     if (!text.trim()) return
     setQ('')
     dispatch({ type: 'chat', msg: { role: 'user', text } })
+    const history = state.chat.slice(-6).map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.text}`).join('\n')
+    if (mode === 'pdfs') {
+      const found = await askPdfs(state.papers, text, 8, setReading).catch(() => [])
+      setReading(0)
+      const answer = await run({ maxTokens: 1500, prompt: pdfPrompt(text, found, history), fallback: () => localPdfAnswer(text, found) })
+      return dispatch({ type: 'chat', msg: { role: 'ai', text: answer, cites: found.map(h => ({ id: h.paper.id, page: h.page, title: short(h.paper) })) } })
+    }
     const hits = search(index, text, 8)
     const notes = searchHighlights(state.highlights, text, 6)
-    const history = state.chat.slice(-6).map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.text}`).join('\n')
     const answer = await run({ maxTokens: 1500, prompt: `${history ? `Conversation so far:\n${history}\n\n` : ''}Question: ${text}\n\nRelevant papers from the user's library:\n${paperContext(hits.map(h => h.paper), text)}${notes.length ? `\n\nThe user's own highlights and dictionary (treat as their prior understanding; reconcile or correct if needed):\n${highlightsContext(notes)}` : ''}`, fallback: () => localAnswer(text, hits, state.papers.length, notes) })
     dispatch({ type: 'chat', msg: { role: 'ai', text: answer, sources: hits.slice(0, 5).map(h => h.paper.id), notes: notes.length } })
   }
@@ -53,13 +63,19 @@ export default function Copilot() {
               <div className={`bubble ${m.role === 'user' ? 'me' : 'ai'}`} style={{ whiteSpace: m.role === 'user' ? 'pre-wrap' : 'normal' }}>
                 {m.role === 'user' ? m.text : <Prose text={m.text} />}
                 {m.notes > 0 && <span className="tag lime" style={{ cursor: 'pointer', marginTop: 8 }} onClick={() => nav('/notes')}>+ {m.notes} from your notebook</span>}
+                {m.cites?.length > 0 && <div style={{ marginTop: 8 }}>{m.cites.map((c, j) => <span key={j} className="tag" style={{ cursor: 'pointer' }} title="Open the PDF at this page" onClick={() => nav(`/paper/${encodeURIComponent(c.id)}/pdf:${c.page}`)}>[{j + 1}] {c.title} · p.{c.page}</span>)}</div>}
                 {m.sources?.length > 0 && <div style={{ marginTop: 8 }}>{m.sources.map((id, j) => { const p = state.papers.find(x => x.id === id); return p && <span key={id} className="tag" style={{ cursor: 'pointer' }} onClick={() => nav(`/paper/${id}`)}>[{j + 1}] {p.title.split(':')[0].slice(0, 28)}</span> })}</div>}
               </div>
             </div>))}
-          {busy && <div className="row"><span className="spinner" /> <span className="muted small">Reading your papers…</span></div>}
+          {(busy || reading > 0) && <div className="row"><span className="spinner" /> <span className="muted small">{reading > 0 && reading < 1 ? `Reading your PDFs… ${Math.round(reading * 100)}%` : 'Reading your papers…'}</span></div>}
           {error && <p className="small" style={{ color: 'var(--red)' }}>{error}</p>}
         </div>
-        <form className="row" style={{ marginTop: 12 }} onSubmit={e => { e.preventDefault(); ask(q) }}>
+        <div className="row" style={{ marginTop: 12, gap: 6 }} data-tour="ask-mode">
+          <span className="small muted">Answer from:</span>
+          <button type="button" className={`btn sm ${mode === 'pdfs' ? 'violet' : 'ghost'}`} onClick={() => setMode('pdfs')} disabled={!pdfCount} title={pdfCount ? 'Search every page of your uploaded PDFs; answers cite the page' : 'Upload PDFs in the Library first'}><FileText size={13} /> My PDFs ({pdfCount})</button>
+          <button type="button" className={`btn sm ${mode === 'library' ? 'violet' : 'ghost'}`} onClick={() => setMode('library')}><Library size={13} /> Whole library</button>
+        </div>
+        <form className="row" style={{ marginTop: 8 }} onSubmit={e => { e.preventDefault(); ask(q) }}>
           <input className="input" placeholder="Ask another question..." value={q} onChange={e => setQ(e.target.value)} disabled={busy} />
           <button className="btn violet" disabled={busy || !q.trim()}><Send size={15} /></button>
         </form>

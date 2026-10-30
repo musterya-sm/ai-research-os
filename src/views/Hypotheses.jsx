@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
-import { Sparkles, Trash2, Save, FlaskConical } from 'lucide-react'
+import { Sparkles, Trash2, Save, FlaskConical, Share2 } from 'lucide-react'
 import { Head, AiBadge, useAI, nav, toast, ago } from '../components/ui.jsx'
 import { useStore } from '../lib/store.jsx'
 import { detectGaps } from '../lib/nlp.js'
+import { copyShare, shareHypotheses } from '../lib/share.js'
 import { paperContext } from '../lib/ai.js'
 
 const TEMPLATES = [
@@ -66,7 +67,7 @@ export default function Hypotheses() {
         </div>
       </div>
       <div className="card" style={{ marginTop: 16 }}>
-        <h3>Saved hypotheses ({state.hypotheses.length})</h3>
+        <div className="row between"><h3>Saved hypotheses ({state.hypotheses.length})</h3>{state.hypotheses.length > 0 && <button className="btn sm" title="Read-only link anyone can open" onClick={() => copyShare(shareHypotheses(state, state.hypotheses), toast)}><Share2 size={12} /> Share link</button>}</div>
         {!state.hypotheses.length && <p className="muted small">Nothing saved yet.</p>}
         {state.hypotheses.map(x => <div key={x.id} className="row between small" style={{ padding: '8px 0', borderBottom: '1.5px solid var(--soft)' }}><span><span className="tag">{x.focus}</span> {x.text}</span><span className="row"><button className="btn sm" onClick={() => nav(`/lab/new/hyp:${x.id}`)}><FlaskConical size={12} /> Plan experiment</button><span className="muted tiny">{ago(x.at)}</span><button className="star" onClick={() => dispatch({ type: 'deleteHypothesis', id: x.id })}><Trash2 size={13} /></button></span></div>)}
       </div>

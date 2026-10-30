@@ -163,7 +163,16 @@ const Ctx = createContext(null)
 
 export function StoreProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, null, () => {
-    try { const saved = JSON.parse(localStorage.getItem(KEY)); if (saved?.papers) return { ...initial(), ...saved, settings: { ...initial().settings, ...saved.settings } } } catch {}
+    try {
+      const saved = JSON.parse(localStorage.getItem(KEY))
+      // Saved state may be from an older version or damaged: coerce it like any imported workspace.
+      if (saved && typeof saved === 'object' && saved.papers) {
+        const base = initial()
+        const settings = saved.settings && typeof saved.settings === 'object' ? saved.settings : {}
+        const keep = k => (Array.isArray(saved[k]) ? { [k]: saved[k] } : {})
+        return { ...base, ...keep('recent'), ...(Array.isArray(saved.chat) ? { chat: saved.chat.filter(m => m && typeof m.text === 'string') } : {}), ...keep('members'), ...sanitizeDoc(saved), review: saved.review && typeof saved.review === 'object' ? { ...base.review, ...saved.review } : base.review, settings: { ...base.settings, ...settings } }
+      }
+    } catch {}
     return initial()
   })
   useEffect(() => {

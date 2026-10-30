@@ -22,6 +22,6 @@ export async function ingestPdf(file, { papers, dispatch, attachTo, onProgress }
     id = ex.arxiv || `pdf-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
     dispatch({ type: 'addPapers', papers: [{ id, arxiv: ex.arxiv || id, citations: 0, venue: ex.arxiv ? 'arXiv' : 'Uploaded PDF', starred: false, addedAt: Date.now(), ...ex.paper, ...(meta || {}), id, ...pdfFields }] })
   }
-  await putPdf(id, { blob: new Blob([ex.buf], { type: 'application/pdf' }), name: file.name, text: ex.text, pages: ex.numPages })
+  await putPdf(id, { blob: new Blob([ex.buf], { type: 'application/pdf' }), name: file.name, text: ex.text, pageTexts: ex.pageTexts, pages: ex.numPages })
   return { id, attached, enriched: !!ex.arxiv }
 }

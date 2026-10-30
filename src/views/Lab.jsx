@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
-import { FlaskConical, Sparkles, Trash2, Download, Code2, Check, ChevronLeft, ChevronRight, Lightbulb, FileText, Plus, Send, AlertTriangle, Github, Compass, Map as MapIcon, Bot, Play, FileCode, Wrench, ClipboardPaste, Package, BookOpen } from 'lucide-react'
+import { FlaskConical, Sparkles, Trash2, Download, Code2, Check, ChevronLeft, ChevronRight, Lightbulb, FileText, Plus, Send, AlertTriangle, Github, Compass, Map as MapIcon, Bot, Play, FileCode, Wrench, ClipboardPaste, Package, BookOpen, Share2 } from 'lucide-react'
 import { Head, AiBadge, Prose, nav, toast, useAI, ago } from '../components/ui.jsx'
 import { useStore } from '../lib/store.jsx'
 import { download } from '../lib/exporter.js'
+import { copyShare, shareProject } from '../lib/share.js'
 import { search } from '../lib/nlp.js'
 import { generateCodebase, fixFiles, localCodebase, toNotebook, zip, checkCode, parseResults } from '../lib/autobuild.js'
 import { extractSpec, planForPaper, specForIdea, planForIdea, specPrompt, ideaPrompt, parseAI, scaffold, planMarkdown, delta, verdict, localMentor, mentorPrompt, normSpec, rid } from '../lib/reproduce.js'
@@ -137,6 +138,7 @@ function Project({ project }) {
         <button className="btn" disabled={busy} onClick={regenerate} title="Rebuild the plan with Claude">{busy ? <span className="spinner" /> : <Sparkles size={14} />}</button>
         <button className="btn" onClick={() => download(`${project.title.slice(0, 40)}-plan.md`, planMarkdown(p))} title="Export plan"><Download size={14} /> .md</button>
         <button className="btn" onClick={() => download('reproduce.py', scaffold(p))} title="Python scaffold"><Code2 size={14} /> .py</button>
+        <button className="btn" title="Share a read-only link" onClick={() => copyShare(shareProject(state, p), toast)}><Share2 size={14} /></button>
         <button className="btn" onClick={() => confirm('Delete this project?') && (dispatch({ type: 'deleteProject', id: project.id }), nav('/lab'))}><Trash2 size={14} /></button>
       </Head>
 

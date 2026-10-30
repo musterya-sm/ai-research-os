@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
-import { Search, Plus, Trash2, SlidersHorizontal } from 'lucide-react'
-import { Head, PaperRow } from '../components/ui.jsx'
+import { Search, Plus, Trash2, SlidersHorizontal, Share2 } from 'lucide-react'
+import { Head, PaperRow, toast } from '../components/ui.jsx'
+import { copyShare, shareCollection } from '../lib/share.js'
 import ImportModal from '../components/ImportModal.jsx'
 import { useStore } from '../lib/store.jsx'
 
@@ -45,7 +46,7 @@ export default function PaperLibrary() {
             <div className="label muted" style={{ margin: '12px 8px 4px' }}>Reading list</div>
             {[['toread', 'To read'], ['reading', 'Reading'], ['done', 'Done']].map(([k, l]) => <NavBtn key={k} id={`status:${k}`} label={l} count={state.papers.filter(p => p.status === k).length} />)}
             <div className="label muted" style={{ margin: '12px 8px 4px' }}>My Collections</div>
-            {state.collections.map(c => <div key={c.id} className="row" style={{ gap: 0 }}><NavBtn id={c.id} label={c.name} count={c.paperIds.length} /><button className="star" title="Delete collection" onClick={() => confirm(`Delete collection "${c.name}"?`) && (dispatch({ type: 'deleteCollection', id: c.id }), setView('all'))}><Trash2 size={13} /></button></div>)}
+            {state.collections.map(c => <div key={c.id} className="row" style={{ gap: 0 }}><NavBtn id={c.id} label={c.name} count={c.paperIds.length} /><button className="star" title="Share a read-only link" onClick={() => copyShare(shareCollection(state, c), toast)}><Share2 size={13} /></button><button className="star" title="Delete collection" onClick={() => confirm(`Delete collection "${c.name}"?`) && (dispatch({ type: 'deleteCollection', id: c.id }), setView('all'))}><Trash2 size={13} /></button></div>)}
             <button onClick={() => { const name = prompt('Collection name'); name && dispatch({ type: 'addCollection', name }) }}><span>+ New Collection</span></button>
           </div>
         </div>
