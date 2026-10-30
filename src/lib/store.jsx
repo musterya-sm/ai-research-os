@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useReducer, useRef } fro
 import { SEED_PAPERS } from '../data/seed.js'
 import { buildIndex } from './nlp.js'
 import { normSpec } from './reproduce.js'
+import { normBuild } from './autobuild.js'
 import { SHARED, startEngine, schedulePush, getAuth, useSync } from './sync.js'
 
 const KEY = 'ai-research-os/v1'
@@ -71,7 +72,7 @@ export function sanitizeDoc(d) {
   const out = { papers, highlights }
   if ('collections' in d) out.collections = arr(d.collections).filter(c => c && typeof c.id === 'string').map(c => ({ id: c.id, name: str(c.name), paperIds: arr(c.paperIds).map(String) }))
   if ('drafts' in d) out.drafts = arr(d.drafts).filter(x => x && typeof x.id === 'string').map(x => ({ ...x, title: str(x.title), body: str(x.body) }))
-  if ('projects' in d) out.projects = arr(d.projects).filter(x => x && typeof x.id === 'string' && x.spec && typeof x.spec === 'object').map(x => ({ ...x, title: str(x.title), spec: normSpec(x.spec), steps: arr(x.steps).filter(t => t && typeof t.id === 'string'), chat: arr(x.chat) }))
+  if ('projects' in d) out.projects = arr(d.projects).filter(x => x && typeof x.id === 'string' && x.spec && typeof x.spec === 'object').map(x => ({ ...x, title: str(x.title), spec: normSpec(x.spec), build: normBuild(x.build), steps: arr(x.steps).filter(t => t && typeof t.id === 'string'), chat: arr(x.chat) }))
   if ('hypotheses' in d) out.hypotheses = arr(d.hypotheses).filter(x => x && typeof x.id === 'string')
   if ('activity' in d) out.activity = arr(d.activity).filter(x => x && typeof x.id === 'string').map(x => ({ ...x, who: str(x.who) || '?', text: str(x.text), at: Number(x.at) || 0 }))
   if (d.notes && typeof d.notes === 'object') out.notes = Object.fromEntries(Object.entries(d.notes).map(([k, v]) => [k, str(v)]))

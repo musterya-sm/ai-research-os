@@ -1,12 +1,17 @@
 import { useMemo, useState } from 'react'
-import { FlaskConical, Sparkles, Trash2, Download, Code2, Check, ChevronLeft, ChevronRight, Lightbulb, FileText, Plus, Send, AlertTriangle, Github, Compass, Map as MapIcon } from 'lucide-react'
+import { FlaskConical, Sparkles, Trash2, Download, Code2, Check, ChevronLeft, ChevronRight, Lightbulb, FileText, Plus, Send, AlertTriangle, Github, Compass, Map as MapIcon, Bot, Play, FileCode, Wrench, ClipboardPaste, Package, BookOpen } from 'lucide-react'
 import { Head, AiBadge, Prose, nav, toast, useAI, ago } from '../components/ui.jsx'
 import { useStore } from '../lib/store.jsx'
 import { download } from '../lib/exporter.js'
 import { search } from '../lib/nlp.js'
+import { generateCodebase, fixFiles, localCodebase, toNotebook, zip, checkCode, parseResults } from '../lib/autobuild.js'
 import { extractSpec, planForPaper, specForIdea, planForIdea, specPrompt, ideaPrompt, parseAI, scaffold, planMarkdown, delta, verdict, localMentor, mentorPrompt, normSpec, rid } from '../lib/reproduce.js'
 
-const MODES = { guide: ['Guide me', 'One step at a time with hints and check-yourself questions. The mentor teaches instead of handing over answers.', Compass], plan: ['Plan it for me', 'The full plan, settings and a code scaffold up front. The mentor gives direct answers.', MapIcon] }
+const MODES = {
+  guide: ['Guide me', 'One step at a time with hints and check-yourself questions. The mentor teaches instead of handing over answers.', Compass],
+  plan: ['Plan it for me', 'The full plan, settings and a code scaffold up front. The mentor gives direct answers.', MapIcon],
+  build: ['Build it for me', 'The platform writes the whole codebase, checks it, and packages it to run on a free GPU. You bring back the numbers.', Bot],
+}
 const VERDICT = { match: ['Reproduced', 'var(--lime)'], above: ['Above paper', '#93c5fd'], below: ['Below paper', '#fca5a5'] }
 
 export default function Lab({ arg, sub }) {
@@ -65,7 +70,7 @@ function Start({ preset }) {
             </select>}
           </>}
           <div className="label" style={{ margin: '14px 0 6px' }}>How should the AI help?</div>
-          <div className="grid g2" style={{ gap: 10 }}>{Object.entries(MODES).map(([k, [label, desc, Icon]]) => (
+          <div className="grid g3" style={{ gap: 10 }}>{Object.entries(MODES).map(([k, [label, desc, Icon]]) => (
             <button key={k} type="button" className="list-item" style={{ textAlign: 'left', background: mode === k ? 'var(--soft)' : null, borderColor: mode === k ? 'var(--violet)' : null }} onClick={() => setMode(k)}>
               <Icon size={18} /><span><div className="t">{label}</div><div className="small muted">{desc}</div></span>
             </button>))}
@@ -113,6 +118,7 @@ function Project({ project }) {
   const done = project.steps.filter(s => s.done).length
   const [cur, setCur] = useState(() => Math.max(0, project.steps.findIndex(s => !s.done)))
   const { run, busy } = useAI()
+  const [tab, setTab] = useState(project.mode === 'build' ? 'build' : 'steps')
 
   async function regenerate() {
     if (!paper && project.source.type === 'paper') return toast('The paper is no longer in your library')
@@ -148,7 +154,9 @@ function Project({ project }) {
 
       <div className="grid side-r">
         <div className="stack">
-          {project.mode === 'guide'
+          <div className="tabs" style={{ marginBottom: 0 }}>{[['steps', project.mode === 'guide' ? 'Step by step' : 'Plan'], ['build', `Build it for me${project.build ? ` · ${Object.keys(project.build.files).length} files` : ''}`]].map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
+          {tab === 'build' ? <Build project={p} paper={paper} save={save} setSpec={setSpec} />
+            : project.mode === 'guide'
             ? <Guide steps={project.steps} cur={Math.min(cur, project.steps.length - 1)} setCur={setCur} setStep={setStep} />
             : <PlanList steps={project.steps} setStep={setStep} />}
           <Scorecard spec={spec} setSpec={setSpec} idea={project.source.type === 'idea'} />
@@ -265,6 +273,108 @@ function Mentor({ project, paper, save }) {
         <button className="btn violet" disabled={busy}>{busy ? <span className="spinner" /> : <Send size={14} />}</button>
       </form>
       {error && <p className="small" style={{ color: 'var(--red)' }}>{error}</p>}
+    </div>
+  )
+}
+
+function Build({ project, paper, save, setSpec }) {
+  const { state } = useStore()
+  const live = !!state.settings.apiKey
+  const b = project.build
+  const [busy, setBusy] = useState(false)
+  const [log, setLog] = useState([])
+  const [file, setFile] = useState('run.py')
+  const [problems, setProblems] = useState(null)
+  const [paste, setPaste] = useState('')
+  const say = t => setLog(l => [...l, t])
+  const files = b?.files || {}
+  const cur = files[file] != null ? file : Object.keys(files)[0]
+  const slug = project.title.replace(/[^\w]+/g, '-').toLowerCase().slice(0, 40).replace(/-$/, '')
+
+  async function generate() {
+    if (b && !confirm('Replace the current codebase?')) return
+    setBusy(true); setLog([]); setProblems(null)
+    try {
+      if (!live) { save({ build: { ...localCodebase(project), at: Date.now() } }); say('Template generated locally. Add a Claude API key in Settings to have the full implementation written for you.'); return }
+      const out = await generateCodebase({ settings: state.settings, project, paper, log: say, save: part => save({ build: { ...part, at: Date.now(), partial: true } }) })
+      save({ build: { ...out, at: Date.now() } })
+      say('Done. Checking the code…')
+      await check(out.files)
+    } catch (e) { say(`Stopped: ${e.message}`) } finally { setBusy(false) }
+  }
+  async function check(fs = files) {
+    setBusy(true)
+    try { say('Loading Python in your browser…'); const p = await checkCode(fs); setProblems(p); say(Object.keys(p).length ? `Found problems in ${Object.keys(p).length} file(s)` : 'All files parse and every local import resolves ✓') } catch (e) { say(e.message) } finally { setBusy(false) }
+  }
+  async function fix(extra) {
+    const probs = extra || problems
+    if (!live) return toast('Fixing code needs a Claude API key (Settings)')
+    setBusy(true)
+    try {
+      const out = await fixFiles({ settings: state.settings, project, paper, build: b, problems: probs, log: say })
+      save({ build: { ...b, files: out, at: Date.now() } }); say('Fixed. Re-checking…')
+      setBusy(false); await check(out)
+    } catch (e) { say(e.message) } finally { setBusy(false) }
+  }
+  function importResults() {
+    const r = parseResults(paste)
+    if (!Object.keys(r).length) {
+      if (live && /Traceback|Error/.test(paste)) {
+        const path = paste.match(/File "(?:\/content\/)?([\w/.-]+\.py)"/g)?.map(x => x.match(/"(?:\/content\/)?([\w/.-]+\.py)"/)[1]).reverse().find(x => x in files)
+        if (path && confirm(`That looks like an error from ${path}. Ask the AI to fix it?`)) return fix({ [path]: [`It crashed when run:\n${paste.slice(-3000)}`] })
+      }
+      return toast(`No ${'RESULTS_JSON'} line found in the pasted output`)
+    }
+    const norm = n => n.toLowerCase().replace(/[^a-z0-9@]/g, '')
+    const metrics = project.spec.metrics.map(m => { const k = Object.keys(r).find(x => norm(x) === norm(m.name)); return k ? { ...m, mine: r[k] } : m })
+    const extra = Object.keys(r).filter(k => !project.spec.metrics.some(m => norm(m.name) === norm(k))).map(k => ({ name: k, paper: '', mine: r[k] }))
+    setSpec({ metrics: [...metrics.filter(m => m.name !== 'main metric' || m.mine || m.paper || !extra.length), ...extra] })
+    setPaste(''); toast(`Imported ${Object.keys(r).length} result${Object.keys(r).length > 1 ? 's' : ''} into the scorecard`)
+  }
+
+  return (
+    <div className="card" data-tour="lab-build">
+      {!b && <>
+        <h3>Let the platform recreate it</h3>
+        <ol className="small" style={{ paddingLeft: 18, lineHeight: 1.7 }}>
+          <li><b>Designs</b> the codebase from the paper: files, modules, dependencies.</li>
+          <li><b>Writes every file</b>, each one aware of the files written before it, with the paper’s settings in <code>config.py</code> and every unstated choice marked <code># ASSUMPTION</code>.</li>
+          <li><b>Reviews its own code</b> twice and rewrites what is broken, then <b>checks it in your browser</b> with real Python.</li>
+          <li><b>Packages it</b> as a Colab notebook (free T4 GPU, one click: Run all) or a .zip. A 3-minute smoke test runs first.</li>
+          <li>You <b>paste the output back</b>: the numbers fill the scorecard, and errors go to the AI to fix.</li>
+        </ol>
+        {!live && <p className="small" style={{ borderLeft: '4px solid #f59e0b', paddingLeft: 10 }}>Writing the full implementation needs a Claude API key (Settings → AI). Without one you get a structured template with every TODO laid out.</p>}
+      </>}
+      <div className="row wrap">
+        <button className="btn violet" disabled={busy} onClick={generate}>{busy ? <span className="spinner" /> : <Bot size={14} />} {b ? 'Rebuild' : live ? 'Build the full codebase' : 'Generate template'}</button>
+        {b && <>
+          <button className="btn" disabled={busy} onClick={() => check()}><Play size={14} /> Check code</button>
+          <button className="btn" onClick={() => download(`${slug}.ipynb`, toNotebook(project, b), 'application/x-ipynb+json')}><BookOpen size={14} /> Colab notebook</button>
+          <button className="btn" onClick={() => { const url = URL.createObjectURL(zip(b.files, slug)); Object.assign(document.createElement('a'), { href: url, download: `${slug}.zip` }).click(); setTimeout(() => URL.revokeObjectURL(url), 1000) }}><Package size={14} /> .zip</button>
+        </>}
+        <AiBadge />
+      </div>
+      {!!log.length && <div className="mono tiny" style={{ marginTop: 10, background: 'var(--soft)', padding: 8, maxHeight: 140, overflowY: 'auto' }}>{log.map((l, i) => <div key={i}>› {l}</div>)}</div>}
+      {problems && !!Object.keys(problems).length && <div className="small build-problems" style={{ marginTop: 10, border: '2px solid #f59e0b', padding: 10 }}>
+        {Object.entries(problems).map(([f, list]) => <div key={f}><b>{f}</b>{list.map((x, i) => <div key={i} className="mono tiny">• {x}</div>)}</div>)}
+        <button className="btn sm violet" style={{ marginTop: 8 }} disabled={busy} onClick={() => fix()}><Wrench size={13} /> Fix with AI</button>
+      </div>}
+      {b && <>
+        {b.plan?.notes && <p className="small muted" style={{ marginTop: 12 }}>{b.plan.notes}</p>}
+        {b.partial && !busy && <p className="small" style={{ color: 'var(--red)' }}>This build was interrupted. Rebuild to finish it.</p>}
+        <div className="grid" style={{ gridTemplateColumns: 'minmax(120px, 170px) 1fr', gap: 10, marginTop: 12 }}>
+          <div className="stack" style={{ gap: 2 }}>{Object.keys(files).map(f => (
+            <button key={f} className="mono tiny" style={{ textAlign: 'left', padding: '5px 8px', border: '1.5px solid var(--line)', background: f === cur ? 'var(--violet)' : 'var(--panel)', color: f === cur ? '#fff' : null, cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis' }} onClick={() => setFile(f)}>
+              <FileCode size={11} /> {f}{problems?.[f] ? ' ⚠' : ''}
+            </button>))}
+          </div>
+          <textarea className="input mono tiny" spellCheck={false} style={{ minHeight: 420, whiteSpace: 'pre', overflow: 'auto', tabSize: 4 }} value={files[cur] || ''} onChange={e => save({ build: { ...b, files: { ...files, [cur]: e.target.value } } })} />
+        </div>
+        <div className="label" style={{ marginTop: 14 }}>Bring results back</div>
+        <p className="muted tiny" style={{ marginTop: 2 }}>Paste the end of the notebook output. The RESULTS_JSON line fills your scorecard; a traceback is sent to the AI to fix the file it came from.</p>
+        <textarea className="input mono tiny" rows={3} placeholder='RESULTS_JSON: {"accuracy": 91.8}' value={paste} onChange={e => setPaste(e.target.value)} />
+        <button className="btn sm" style={{ marginTop: 6 }} disabled={!paste.trim() || busy} onClick={importResults}><ClipboardPaste size={13} /> Import</button>
+      </>}
     </div>
   )
 }
