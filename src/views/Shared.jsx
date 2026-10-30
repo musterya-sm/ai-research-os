@@ -87,7 +87,7 @@ export default function Shared({ data }) {
                 {s.done ? <Check size={16} /> : <Square size={16} />}
                 <div className="grow"><b>{s.title}</b><div className="small muted">{s.detail}</div>{s.note && <div className="small" style={{ marginTop: 4, whiteSpace: 'pre-wrap' }}>📝 {s.note}</div>}</div>
               </div>))}
-            {doc.spec.code.length > 0 && <p className="small">Code: {doc.spec.code.map(u => <a key={u} href={u} target="_blank" rel="noreferrer" style={{ marginRight: 8 }}>{u.replace('https://github.com/', '')}</a>)}</p>}
+            {doc.spec.code.length > 0 && <p className="small">Code: {doc.spec.code.filter(u => /^https:\/\/(www\.)?github\.com\/[\w.-]+\/[\w.-]+\/?$/i.test(u)).map(u => <a key={u} href={u} target="_blank" rel="noreferrer" style={{ marginRight: 8 }}>{u.replace('https://github.com/', '')}</a>)}</p>}
           </>}
         </div>
       )}
