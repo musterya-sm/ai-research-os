@@ -1,0 +1,12 @@
+# One-click deploy: https://render.com/deploy?repo=<this repo's URL>
+services:
+  - type: web
+    name: ai-research-os
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: node server/index.js
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: 20.20.2

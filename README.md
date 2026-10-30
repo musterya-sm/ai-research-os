@@ -24,3 +24,10 @@ npm start        # production: build, then serve app + API + proxies from one pr
 - **Local engine** (no key needed): TF-IDF semantic search, k-means clusters, gap detection, recommendations, extractive summaries, local explanations.
 - **Claude** (optional): add an Anthropic API key in Settings → Integrations for LLM answers across Copilot, surveys, summaries, hypotheses, explain/define and the Writing Studio.
 - arXiv and Semantic Scholar go through a proxy (`/arxiv`, `/s2`) provided by both the Vite dev server and `npm run server`.
+
+
+## Deploy on Render (free)
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/musterya-sm/ai-research-os)
+
+`render.yaml` builds the app and runs `server/index.js` on Render's free plan. Two limits of the free plan: the service sleeps after 15 minutes without visitors (the next visit takes about a minute to wake it), and its disk is wiped on every restart, so team-sync workspaces and synced PDFs on the server don't last. Everyone's own library stays in their browser and is unaffected, and share links don't use the server at all.
