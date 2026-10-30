@@ -5,6 +5,17 @@ import { useStore, uid, CONCEPT_COLORS } from '../lib/store.jsx'
 
 const W = 900, H = 540
 const radius = n => (n.kind === 'concept' ? 34 : 24)
+// Paper labels wrap at word boundaries onto at most 3 lines; anything longer ends in an ellipsis.
+function wrap(text, width = 22, max = 3) {
+  const lines = []
+  for (const w of String(text).split(/\s+/).filter(Boolean)) {
+    const last = lines.length - 1
+    if (last >= 0 && (lines[last] + ' ' + w).length <= width) lines[last] += ' ' + w
+    else lines.push(w.length > width ? w.slice(0, width - 1) + '…' : w)
+  }
+  if (lines.length > max) { lines.length = max; const l = lines[max - 1]; lines[max - 1] = (l.length < width ? l : l.slice(0, width - 1)) + '…' }
+  return lines
+}
 
 // A few hundred iterations of spring + repulsion, enough to untangle small graphs.
 function forceLayout(nodes, edges) {
@@ -69,7 +80,7 @@ export default function GraphCanvas() {
   const addConcept = () => { const label = prompt('Concept name'); if (!label) return; const id = `c:${label}`; if (nodes.some(n => n.id === id)) return setSel(id); set([...nodes, { id, label, kind: 'concept', x: W / 2 + Math.random() * 80 - 40, y: H / 2 + Math.random() * 80 - 40, color: CONCEPT_COLORS[label] || '#e5e7eb' }]); setSel(id) }
   const addPaper = p => {
     const id = `p:${p.id}`
-    const newNodes = nodes.some(n => n.id === id) ? nodes : [...nodes, { id, label: p.title.split(':')[0].slice(0, 22), kind: 'paper', paperId: p.id, x: W / 2 + Math.random() * 120 - 60, y: H / 2 + Math.random() * 120 - 60, color: '#8b5cf6' }]
+    const newNodes = nodes.some(n => n.id === id) ? nodes : [...nodes, { id, label: p.title.split(':')[0], kind: 'paper', paperId: p.id, x: W / 2 + Math.random() * 120 - 60, y: H / 2 + Math.random() * 120 - 60, color: '#8b5cf6' }]
     const autoEdges = p.tags.filter(t => newNodes.some(n => n.id === `c:${t}`)).map(t => ({ id: uid(), from: `c:${t}`, to: id })).filter(e => !edges.some(x => x.from === e.from && x.to === e.to))
     set(newNodes, [...edges, ...autoEdges]); setSel(id); setPicker(false)
   }
@@ -78,13 +89,17 @@ export default function GraphCanvas() {
     const tagSet = [...new Set(starred.flatMap(p => p.tags))]
     let ns = [...nodes]
     tagSet.forEach((t, i) => { if (!ns.some(n => n.id === `c:${t}`)) ns.push({ id: `c:${t}`, label: t, kind: 'concept', x: 100 + (i * 97) % 700, y: 80 + (i * 61) % 380, color: CONCEPT_COLORS[t] || '#e5e7eb' }) })
-    starred.forEach((p, i) => { if (!ns.some(n => n.id === `p:${p.id}`)) ns.push({ id: `p:${p.id}`, label: p.title.split(':')[0].slice(0, 22), kind: 'paper', paperId: p.id, x: 150 + (i * 131) % 600, y: 120 + (i * 83) % 320, color: '#8b5cf6' }) })
+    starred.forEach((p, i) => { if (!ns.some(n => n.id === `p:${p.id}`)) ns.push({ id: `p:${p.id}`, label: p.title.split(':')[0], kind: 'paper', paperId: p.id, x: 150 + (i * 131) % 600, y: 120 + (i * 83) % 320, color: '#8b5cf6' }) })
     const es = [...edges]
     starred.forEach(p => p.tags.forEach(t => { if (!es.some(e => e.from === `c:${t}` && e.to === `p:${p.id}`)) es.push({ id: uid(), from: `c:${t}`, to: `p:${p.id}` }) }))
     set(forceLayout(ns, es), es); toast(`Added ${starred.length} starred papers`)
   }
   const del = () => { if (!sel) return; set(nodes.filter(n => n.id !== sel), edges.filter(e => e.from !== sel && e.to !== sel)); setSel(null) }
 
+  // Older canvases stored titles cut at 22 characters; show the full title unless the label was renamed.
+  const paperOf = n => n.paperId && state.papers.find(p => p.id === n.paperId)
+  const labelOf = n => { const p = paperOf(n), full = p?.title.split(':')[0]; return full && full.startsWith(n.label) ? full : n.label }
+  const titleOf = n => paperOf(n)?.title || n.label
   const byId = useMemo(() => Object.fromEntries(nodes.map(n => [n.id, n])), [nodes])
   const node = byId[sel]
   const paper = node?.paperId && state.papers.find(p => p.id === node.paperId)
@@ -120,7 +135,10 @@ export default function GraphCanvas() {
                     {n.kind === 'concept'
                       ? <rect x={-r * 1.5} y={-16} width={r * 3} height={32} fill={n.color} stroke="#0d0d0d" strokeWidth={on ? 3.5 : 2} />
                       : <circle r={r} fill={n.color} stroke="#0d0d0d" strokeWidth={on ? 3.5 : 2} />}
-                    <text textAnchor="middle" dy={n.kind === 'paper' ? r + 14 : 4} fontSize={11} fontFamily="JetBrains Mono" fontWeight={700} style={{ fill: n.kind === 'paper' ? 'var(--ink)' : '#0d0d0d', pointerEvents: 'none' }}>{n.label}</text>
+                    <title>{titleOf(n)}</title>
+                    <text textAnchor="middle" dy={n.kind === 'paper' ? 0 : 4} fontSize={11} fontFamily="JetBrains Mono" fontWeight={700} style={{ fill: n.kind === 'paper' ? 'var(--ink)' : '#0d0d0d', pointerEvents: 'none' }}>
+                      {n.kind === 'paper' ? wrap(labelOf(n)).map((l, i) => <tspan key={i} x={0} dy={i ? 13 : r + 14}>{l}</tspan>) : n.label}
+                    </text>
                   </g>
                 )
               })}

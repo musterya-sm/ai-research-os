@@ -29,7 +29,7 @@ export default function Notebook({ arg, sub }) {
   const papersWithNotes = [...new Set(hs.map(h => h.paperId).filter(Boolean))]
   const toCanvas = h => {
     const nid = `n:${h.id}`, label = (h.kind === 'term' ? h.term : h.text).slice(0, 24)
-    dispatch({ type: 'addToCanvas', nodes: [{ id: nid, label, kind: 'paper', x: 450 + Math.random() * 100, y: 270 + Math.random() * 100, color: KINDS[h.kind].color }, ...(h.paperId ? [{ id: `p:${h.paperId}`, label: titleOf(h.paperId)?.slice(0, 22) || 'Paper', kind: 'paper', paperId: h.paperId, x: 300, y: 200, color: '#8b5cf6' }] : [])], edges: h.paperId ? [{ from: `p:${h.paperId}`, to: nid }] : [] })
+    dispatch({ type: 'addToCanvas', nodes: [{ id: nid, label, kind: 'paper', x: 450 + Math.random() * 100, y: 270 + Math.random() * 100, color: KINDS[h.kind].color }, ...(h.paperId ? [{ id: `p:${h.paperId}`, label: titleOf(h.paperId)?.split(':')[0] || 'Paper', kind: 'paper', paperId: h.paperId, x: 300, y: 200, color: '#8b5cf6' }] : [])], edges: h.paperId ? [{ from: `p:${h.paperId}`, to: nid }] : [] })
     toast('Added to canvas')
   }
 

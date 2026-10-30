@@ -29,11 +29,11 @@ export default function Citations({ paper }) {
   }
   // This paper in the middle; library papers it cites / is cited by become linked nodes.
   function toCanvas() {
-    const me = `p:${paper.id}`, nodes = [{ id: me, label: paper.title.split(':')[0].slice(0, 22), kind: 'paper', paperId: paper.id, x: 450, y: 280, color: '#8b5cf6' }], edges = []
+    const me = `p:${paper.id}`, nodes = [{ id: me, label: paper.title.split(':')[0], kind: 'paper', paperId: paper.id, x: 450, y: 280, color: '#8b5cf6' }], edges = []
     const linked = [...g.refs.map(i => [i, 'ref']), ...g.cites.map(i => [i, 'cite'])].map(([i, k]) => [inLibrary(state.papers, i), k]).filter(([p]) => p && p.id !== paper.id)
     linked.slice(0, 24).forEach(([p, k], n) => {
       const a = (n / Math.min(24, linked.length)) * Math.PI * 2
-      nodes.push({ id: `p:${p.id}`, label: p.title.split(':')[0].slice(0, 22), kind: 'paper', paperId: p.id, x: 450 + Math.cos(a) * 240, y: 280 + Math.sin(a) * 180, color: k === 'ref' ? '#3b82f6' : '#d4f53c' })
+      nodes.push({ id: `p:${p.id}`, label: p.title.split(':')[0], kind: 'paper', paperId: p.id, x: 450 + Math.cos(a) * 240, y: 280 + Math.sin(a) * 180, color: k === 'ref' ? '#3b82f6' : '#d4f53c' })
       edges.push(k === 'ref' ? { from: me, to: `p:${p.id}` } : { from: `p:${p.id}`, to: me })
     })
     if (!edges.length) return toast('None of its references or citations are in your library yet')
