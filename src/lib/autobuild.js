@@ -4,6 +4,7 @@
 // The code runs where free GPUs are (Colab notebook / zip); results come back through RESULTS_JSON.
 import { askClaude } from './ai.js'
 import { passages } from './nlp.js'
+import { pySafe } from './reproduce.js'
 
 const MARK = 'RESULTS_JSON:'
 // File paths end up in shell lines of the Colab notebook (mkdir, %%writefile), so only plain relative paths.
@@ -102,7 +103,7 @@ export async function fixFiles({ settings, project, paper, build, problems, log 
 
 // Without a key: the same layout as a template with every TODO spelled out from the spec.
 export function localCodebase(project) {
-  const s = project.spec
+  const s = pySafe(project.spec)
   const key = n => n.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
   const cls = c => c.replace(/[^\w ]/g, ' ').trim().split(/\s+/).map(w => w[0].toUpperCase() + w.slice(1)).join('').slice(0, 40) || 'Method'
   const comps = s.components.length ? s.components : ['Method']
