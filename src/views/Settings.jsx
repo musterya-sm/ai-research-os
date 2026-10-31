@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { Head, Toggle, toast } from '../components/ui.jsx'
-import { useStore, untouchedSample } from '../lib/store.jsx'
+import { useStore, samplePapers } from '../lib/store.jsx'
+import { removeSample } from '../components/Welcome.jsx'
 import { askClaude, hasAI, aiName, PROVIDERS } from '../lib/ai.js'
 import { listPdfIds, deletePdf } from '../lib/pdfstore.js'
 import { workspaceJson, download } from '../lib/exporter.js'
 import SyncPanel from '../components/SyncPanel.jsx'
 import { showReminder } from '../lib/reminder.js'
-import { startTour, CHAPTERS } from '../components/Tour.jsx'
+import { startTour, startGuide, CHAPTERS } from '../components/Tour.jsx'
 
 const SECTIONS = ['Profile', 'Account & Sync', 'Preferences', 'Notifications', 'Integrations', 'API Keys', 'Billing', 'Data & Privacy']
 
@@ -35,7 +36,7 @@ export default function Settings({ arg }) {
           </div>}
           {sec === 'Preferences' && <div style={{ maxWidth: 520 }}>
             <div className="card flat" style={{ marginBottom: 10 }}>
-              <div className="row between"><div><b>Product tour</b><div className="muted tiny">{s.tourDone ? 'Completed or skipped — take it again any time.' : 'Not finished yet.'}</div></div><button className="btn violet" onClick={() => startTour()}>Start tour</button></div>
+              <div className="row between"><div><b>Product tour</b><div className="muted tiny">{s.tourDone ? 'Completed or skipped — take it again any time.' : 'Not finished yet.'}</div></div><span className="row"><button className="btn" onClick={() => startGuide('start')}>How to add papers</button><button className="btn violet" onClick={() => startTour()}>Start tour</button></span></div>
               <div className="row wrap" style={{ marginTop: 8, gap: 4 }}><span className="muted tiny">Jump to:</span>{CHAPTERS.map(c => <button key={c} className="btn sm" onClick={() => startTour(c)}>{c}</button>)}</div>
             </div>
             <Row label="AI Summarization" k="autoSummarize" hint="Show TL;DR on every paper" />
@@ -67,7 +68,7 @@ export default function Settings({ arg }) {
           </div>}
           {sec === 'Billing' && <p>Local workspace — free. Claude usage is billed to your own Anthropic account.</p>}
           {sec === 'Data & Privacy' && <div className="stack" style={{ maxWidth: 520 }}>
-            <div className="row wrap"><button className="btn" onClick={() => { dispatch({ type: 'loadSample' }); toast('Sample library loaded') }}>Load sample library</button><button className="btn" disabled={!untouchedSample(state).length} onClick={() => confirm(`Remove ${untouchedSample(state).length} untouched sample papers?`) && (dispatch({ type: 'removeSample' }), toast('Sample papers removed'))}>Remove sample papers ({untouchedSample(state).length})</button></div>
+            <div className="row wrap"><button className="btn" onClick={() => { dispatch({ type: 'loadSample' }); toast('Sample library loaded') }}>Load sample library</button><button className="btn" disabled={!samplePapers(state).length} onClick={() => removeSample(state, dispatch)}>Remove sample library ({samplePapers(state).length})</button></div>
             <Row label="Share anonymous analytics" k="shareAnalytics" hint="No analytics are collected; data only leaves this browser if you turn on sync" />
             <p className="small">{state.papers.length} papers, {state.collections.length} collections, {Object.keys(state.notes).length} notes, {state.papers.filter(p => p.hasPdf).length} PDFs stored locally.</p>
             <div className="row"><button className="btn" onClick={async () => download('research-os-workspace.json', await workspaceJson(state, { includePdfs: true }), 'application/json')}>Export all data</button>

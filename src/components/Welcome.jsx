@@ -1,13 +1,23 @@
 import { useState } from 'react'
-import { Sparkles, Upload, BookOpen, X, Plus } from 'lucide-react'
+import { Sparkles, Upload, BookOpen, X, Plus, HelpCircle } from 'lucide-react'
 import { toast, nav } from './ui.jsx'
 import ImportModal from './ImportModal.jsx'
-import { useStore, untouchedSample } from '../lib/store.jsx'
+import { useStore, samplePapers } from '../lib/store.jsx'
+import { startGuide } from './Tour.jsx'
 import { searchArxiv } from '../lib/arxiv.js'
 
 const TOPICS = ['LLM Agents', 'Retrieval-Augmented Generation', 'Memory for LLMs', 'Reasoning', 'Tool Use', 'Long Context', 'Multi-Agent Systems', 'Evaluation & Benchmarks', 'Diffusion Models', 'Computer Vision', 'Reinforcement Learning', 'Graph Neural Networks', 'Speech', 'Robotics', 'AI Safety', 'Efficient Inference']
 const PER_TOPIC = 6
 const wait = ms => new Promise(r => setTimeout(r, ms))
+
+// Clears the sample library, lands on the empty Dashboard and walks through the ways to add papers.
+export function removeSample(state, dispatch) {
+  const n = samplePapers(state).length
+  if (!confirm(`Remove the sample library? Its ${n} papers, collections, canvas and any notes on them are deleted. Papers you added yourself stay.`)) return
+  dispatch({ type: 'removeSample' })
+  nav('/dashboard')
+  startGuide('start')
+}
 
 // Shown on an empty library: who you are, what you research, and a starter library built from arXiv.
 export function Welcome() {
@@ -52,15 +62,18 @@ export function Welcome() {
       <label className="small" style={{ maxWidth: 360, display: 'block' }}>What should we call you?
         <input className="input" placeholder="Your name" value={name} onChange={e => setName(e.target.value)} onBlur={saveName} />
       </label>
+      <div data-tour="welcome-topics">
       <div className="label" style={{ marginTop: 14 }}>What do you research? Pick a few</div>
       <div style={{ margin: '6px 0' }}>
         {[...TOPICS, ...picked.filter(t => !TOPICS.includes(t))].map(t => <button key={t} type="button" className={`tag ${picked.includes(t) ? 'violet' : ''}`} style={{ cursor: 'pointer', fontSize: 11, padding: '3px 8px' }} aria-pressed={picked.includes(t)} onClick={() => toggle(t)}>{picked.includes(t) ? '✓ ' : ''}{t}</button>)}
       </div>
       <div className="row" style={{ maxWidth: 420 }}><input className="input" placeholder="Or type your own topic" value={custom} onChange={e => setCustom(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustom() } }} /><button className="btn sm" type="button" disabled={!custom.trim()} onClick={addCustom}><Plus size={13} /></button></div>
+      </div>
       <div className="row wrap" style={{ marginTop: 14 }}>
-        <button className="btn violet" disabled={!picked.length || !!busy} onClick={build}>{busy ? <span className="spinner" /> : <Sparkles size={14} />} Build my starter library{picked.length ? ` (${picked.length * PER_TOPIC} papers)` : ''}</button>
-        <button className="btn" onClick={() => { saveName(); setImporting(true) }}><Upload size={14} /> Upload PDFs / import</button>
+        <button className="btn violet" data-tour="build" disabled={!picked.length || !!busy} onClick={build}>{busy ? <span className="spinner" /> : <Sparkles size={14} />} Build my starter library{picked.length ? ` (${picked.length * PER_TOPIC} papers)` : ''}</button>
+        <button className="btn" data-tour="upload" onClick={() => { saveName(); setImporting(true) }}><Upload size={14} /> Upload PDFs / import</button>
         <button className="btn ghost" onClick={() => { saveName(); dispatch({ type: 'loadSample' }); toast('Sample library loaded. Remove it any time from the Dashboard or Settings.') }}><BookOpen size={14} /> Load sample library</button>
+        <button className="btn ghost" onClick={() => startGuide('start')}><HelpCircle size={14} /> Show me how</button>
       </div>
       {busy && <p className="small muted" style={{ marginBottom: 0 }}>{busy}</p>}
       {importing && <ImportModal onClose={() => setImporting(false)} />}
@@ -71,13 +84,13 @@ export function Welcome() {
 // For libraries that still contain the demo papers (everyone who started before libraries began empty).
 export function SampleBanner() {
   const { state, dispatch } = useStore()
-  const n = untouchedSample(state).length
+  const n = samplePapers(state).length
   if (n < 5 || state.settings.sampleBannerHidden) return null
   return (
     <div className="card flat row between" style={{ background: 'var(--soft)', padding: '10px 14px' }} data-tour="sample-banner">
-      <span className="small"><b>{n} of your papers are the sample library.</b> Remove them to keep only your own. Papers you've annotated, read, starred or used are kept.</span>
+      <span className="small"><b>{n} of your papers are the sample library.</b> Remove it to start from a blank slate with only your own papers; we'll show you how to add yours.</span>
       <span className="row" style={{ gap: 6 }}>
-        <button className="btn sm dark" onClick={() => confirm(`Remove ${n} untouched sample papers (plus the demo teammates and activity)?`) && (dispatch({ type: 'removeSample' }), toast('Sample papers removed'))}>Remove sample papers</button>
+        <button className="btn sm dark" onClick={() => removeSample(state, dispatch)}>Remove sample library</button>
         <button className="star" aria-label="Keep them" title="Keep them" onClick={() => dispatch({ type: 'settings', patch: { sampleBannerHidden: true } })}><X size={14} /></button>
       </span>
     </div>

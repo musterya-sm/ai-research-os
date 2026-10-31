@@ -35,9 +35,9 @@ export const sample = () => ({
   recent: ['2310.08560', '2201.11903', '2404.13501', '2304.03442'],
   canvas: defaultCanvas(),
 })
-// A sample paper counts as untouched if the user never annotated, read, re-starred or built on it.
-export const untouchedSample = s => s.papers.filter(p => SAMPLE_IDS.has(p.id) && !p.hasPdf && !p.status && !s.notes?.[p.id] && !!p.starred === SAMPLE_STARRED.has(p.id)
-  && !s.highlights.some(h => h.paperId === p.id) && !s.projects?.some(x => x.source?.paperId === p.id))
+// Old libraries were seeded with the sample before it became opt-in, so match by id rather than a flag.
+export const samplePapers = s => s.papers.filter(p => SAMPLE_IDS.has(p.id))
+const SAMPLE_NODES = new Set(defaultCanvas().nodes.map(n => n.id))
 
 const initial = () => ({
   papers: [],
@@ -181,17 +181,21 @@ function reducer(s, a) {
       return { ...s, papers: [...s.papers, ...x.papers.filter(p => !have.has(p.id))], collections, canvas, recent: s.recent.length ? s.recent : x.recent, activity: log('loaded the sample library') }
     }
     case 'removeSample': {
-      const gone = new Set(untouchedSample(s).map(p => p.id))
-      const nodes = s.canvas.nodes.filter(n => !(n.paperId && gone.has(n.paperId)))
+      // Back to a blank slate: everything the sample brought in goes (with any notes on it); the user's own papers stay.
+      const gone = new Set(samplePapers(s).map(p => p.id))
+      const papers = s.papers.filter(p => !gone.has(p.id))
+      const nodes = s.canvas.nodes.filter(n => !(n.paperId && gone.has(n.paperId)) && !SAMPLE_NODES.has(n.id))
       const keep = new Set(nodes.map(n => n.id))
-      return { ...s,
-        papers: s.papers.filter(p => !gone.has(p.id)),
-        collections: s.collections.map(c => ({ ...c, paperIds: c.paperIds.filter(id => !gone.has(id)) })).filter(c => c.paperIds.length || !['agents', 'memory', 'rag'].includes(c.id)),
+      const name = s.settings.name === 'Arjun' ? '' : s.settings.name
+      return { ...s, papers,
+        collections: s.collections.flatMap(c => { const ids = c.paperIds.filter(id => !gone.has(id)); return ids.length || !c.paperIds.length ? [{ ...c, paperIds: ids }] : [] }),
         canvas: { nodes, edges: s.canvas.edges.filter(e => keep.has(e.from) && keep.has(e.to)) },
+        notes: Object.fromEntries(Object.entries(s.notes).filter(([id]) => !gone.has(id))),
+        highlights: s.highlights.filter(h => !gone.has(h.paperId)),
         recent: s.recent.filter(id => !gone.has(id)),
-        members: s.members.filter(m => !DEMO_PEOPLE.has(m.name)).map(m => (m.you && m.name === 'Arjun' ? { ...m, name: s.settings.name === 'Arjun' ? '' : s.settings.name } : m)),
-        activity: s.activity.filter(x => !DEMO_PEOPLE.has(x.who)),
-        settings: s.settings.name === 'Arjun' ? { ...s.settings, name: '' } : s.settings,
+        members: s.members.filter(m => !DEMO_PEOPLE.has(m.name)).map(m => (m.you ? { ...m, name } : m)),
+        activity: papers.length ? s.activity.filter(x => !DEMO_PEOPLE.has(x.who) && x.who !== 'Arjun' && x.text !== 'loaded the sample library') : [],
+        settings: { ...s.settings, name, sampleBannerHidden: false },
       }
     }
     default: return s

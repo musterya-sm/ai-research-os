@@ -59,9 +59,9 @@ export default function PaperLibrary() {
             <select className="input" style={{ width: 'auto' }} value={sort} onChange={e => setSort(e.target.value)}>{Object.keys(SORTS).map(s => <option key={s} value={s}>Sort: {s}</option>)}</select>
             <select className="input" style={{ width: 'auto' }} value={tag} onChange={e => { setTag(e.target.value); setPage(0) }}><option value="">All concepts</option>{tags.map(t => <option key={t}>{t}</option>)}</select>
           </div>}
-          <div className="stack" style={{ marginTop: 14 }}>
+          <div className="stack" style={{ marginTop: 14 }} data-tour="library-list">
             {shown.map(p => <PaperRow key={p.id} paper={p} />)}
-            {!shown.length && <div className="empty">No papers match.</div>}
+            {!shown.length && <div className="empty">{state.papers.length ? 'No papers match.' : <>Your library is empty. Click <b>Import / Upload PDF</b>, drop PDFs here, or <a href="#/dashboard">build a starter library</a> from your research topics.</>}</div>}
           </div>
           <div className="row between" style={{ marginTop: 14 }}>
             <span className="mono tiny muted">SHOWING {list.length ? page * PER + 1 : 0}–{Math.min(list.length, page * PER + PER)} OF {list.length}</span>

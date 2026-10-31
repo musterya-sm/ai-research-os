@@ -78,7 +78,7 @@ export function AlertsCard() {
   const top = a.items.slice(0, 3)
   const tags = Object.entries(state.papers.flatMap(p => p.tags).reduce((m, t) => ({ ...m, [t]: (m[t] || 0) + 1 }), {})).sort((x, y) => y[1] - x[1]).map(([t]) => t).filter(t => t !== 'General').slice(0, 4)
   return (
-    <div className="card">
+    <div className="card" data-tour="alerts-card">
       <div className="row between"><h3><Bell size={15} /> Topic alerts</h3><button className="btn sm ghost" onClick={() => nav('/feed/alerts')}>{a.items.length ? `All ${a.items.length} →` : 'Manage →'}</button></div>
       {!a.topics.length && !a.authors.length
         ? <><p className="small muted" style={{ marginTop: 0 }}>Get new arXiv papers on your topics every day. Follow one to start:</p>{tags.map(t => <button key={t} className="tag" style={{ cursor: 'pointer' }} onClick={() => dispatch({ type: 'alerts', patch: { topics: [...a.topics, t], lastRun: 0 } })}>+ {t}</button>)}</>

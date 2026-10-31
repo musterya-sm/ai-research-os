@@ -45,26 +45,48 @@ export const STEPS = [
 ]
 export const CHAPTERS = [...new Set(STEPS.map(s => s.chapter))]
 
+// Short guides for one job, run by the same spotlight. "start": every way to fill an empty library.
+const GUIDES = {
+  start: [
+    { chapter: 'Add papers', title: 'A blank slate 🧹', body: 'Your library is empty and ready for your own papers. This 1-minute guide shows every way to add them.', route: '/dashboard' },
+    { chapter: 'Add papers', target: '[data-tour=welcome-topics]', title: '1. Pick what you research', body: 'Tap the topics you work on, or type your own (an area, a method, even a paper title) and press +.', fallback: 'The welcome card with this option only shows while your library is empty. You can do the same from 02 Paper Library → Import / Upload PDF.', route: '/dashboard' },
+    { chapter: 'Add papers', target: '[data-tour=build]', title: '2. Build your starter library', body: 'Pulls about 6 recent arXiv papers per topic, puts each topic in its own collection and follows those topics, so new papers arrive daily.', fallback: 'The welcome card with this option only shows while your library is empty. You can do the same from 02 Paper Library → Import / Upload PDF.', route: '/dashboard' },
+    { chapter: 'Add papers', target: '[data-tour=upload]', title: 'Already have PDFs?', body: 'Upload them here. The text is read in your browser, and arXiv papers are matched automatically with their title, authors and abstract.', fallback: 'The welcome card with this option only shows while your library is empty. You can do the same from 02 Paper Library → Import / Upload PDF.', route: '/dashboard' },
+    { chapter: 'Add papers', target: 'main .head .actions', place: 'bottom', title: 'Add more any time: Paper Library', body: 'Sidebar → 02 Paper Library → Import / Upload PDF. From there: search arXiv, upload PDFs, connect Zotero, paste BibTeX or add a paper by hand. You can also drag PDFs straight onto the list.', route: '/library' },
+    { chapter: 'Add papers', target: '[data-tour=library-list]', place: 'left', title: 'Where your papers live', body: 'Every paper you add shows up here. Star the important ones, mark them To read / Reading / Done, and group them into collections on the left. Click one to open its page and PDF.', route: '/library' },
+    { chapter: 'Add papers', target: '[data-tour=alerts]', title: 'Keep it growing: Topic alerts', body: 'Sidebar → 15 Recommendation Feed → Alerts. Follow topics or authors and the newest arXiv papers on them appear here every day; add one with a click.', route: '/feed/alerts' },
+    { chapter: 'Add papers', target: '[data-tour=account]', place: 'right', title: 'Keep your library everywhere', body: 'Without an account your library is saved in this browser only. Sign in with a username and password to keep it on every device.', route: '/dashboard' },
+    { chapter: 'Add papers', target: '[data-tour=welcome]', title: 'Your turn', body: 'Start with the card above. Once you have papers, the ? button in the sidebar gives the full tour of what you can do with them.', fallback: 'Open 02 Paper Library → Import / Upload PDF to add your first papers. Once you have some, the ? button in the sidebar gives the full tour.', route: '/dashboard' },
+  ],
+}
+
 export const startTour = (chapter) => window.dispatchEvent(new CustomEvent('tour:start', { detail: { chapter } }))
+export const startGuide = (guide) => window.dispatchEvent(new CustomEvent('tour:start', { detail: { guide } }))
 
 const PAD = 8, W = 340
 
 export default function Tour() {
   const { state, dispatch } = useStore()
   const [i, setI] = useState(null)
+  const [steps, setSteps] = useState(STEPS)
   const [rect, setRect] = useState(null)
   const [missing, setMissing] = useState(false)
   const card = useRef()
-  const step = i === null ? null : STEPS[i]
+  const step = i === null ? null : steps[i]
 
   // First visit → start automatically once the library has papers (not on invite, share or profile links, or the landing page).
   const hasPapers = state.papers.length > 0 && !state.settings.setupBusy
   useEffect(() => {
     const inApp = () => { const r = location.hash.replace(/^#\/?/, '').split('/')[0]; return !!r && !['home', 'join', 'u', 's'].includes(r) }
     let auto = !state.settings.tourDone && hasPapers
-    const maybe = () => { if (auto && inApp()) { auto = false; setI(0) } }
+    const maybe = () => { if (auto && inApp()) { auto = false; setSteps(STEPS); setI(0) } }
     maybe()
-    const on = e => { auto = false; const c = e.detail?.chapter; setI(c ? STEPS.findIndex(s => s.chapter === c) : 0) }
+    const on = e => {
+      auto = false
+      const { chapter: c, guide } = e.detail || {}
+      setSteps(GUIDES[guide] || STEPS)
+      setI(c && !guide ? STEPS.findIndex(s => s.chapter === c) : 0)
+    }
     window.addEventListener('tour:start', on)
     window.addEventListener('hashchange', maybe)
     return () => { window.removeEventListener('tour:start', on); window.removeEventListener('hashchange', maybe) }
@@ -89,7 +111,7 @@ export default function Tour() {
     }
     t = setTimeout(find, 60)
     return () => clearTimeout(t)
-  }, [i])
+  }, [i, steps])
 
   // Track the target every frame so the spotlight follows layout changes and scrolling.
   useLayoutEffect(() => {
@@ -107,7 +129,7 @@ export default function Tour() {
     }
     loop()
     return () => cancelAnimationFrame(raf)
-  }, [i, missing])
+  }, [i, steps, missing])
 
   useEffect(() => {
     if (!step) return
@@ -118,12 +140,14 @@ export default function Tour() {
     }
     window.addEventListener('keydown', k)
     return () => window.removeEventListener('keydown', k)
-  }, [i])
+  }, [i, steps])
 
   if (!step) return null
-  const finish = () => { setI(null); dispatch({ type: 'settings', patch: { tourDone: true } }) }
-  function skip() { finish(); toast('Tour skipped — restart it any time from Settings or the ? button') }
-  function next() { i < STEPS.length - 1 ? setI(i + 1) : finish() }
+  const full = steps === STEPS
+  // Only the full tour counts as done; a guide must not stop it auto-starting once the library has papers.
+  const finish = () => { setI(null); full && dispatch({ type: 'settings', patch: { tourDone: true } }) }
+  function skip() { finish(); toast(full ? 'Tour skipped — restart it any time from Settings or the ? button' : 'Guide closed — find it again under Settings → Preferences') }
+  function next() { i < steps.length - 1 ? setI(i + 1) : finish() }
   function back() { i > 0 && setI(i - 1) }
 
   const phone = innerWidth < 700
@@ -137,10 +161,10 @@ export default function Tour() {
       : side === 'bottom' ? { left: rect.x, top: rect.y + rect.h + 16 } : { left: rect.x, top: rect.y - 16 - h }
     pos = { left: Math.max(12, Math.min(pos.left, innerWidth - W - 12)), top: Math.max(12, Math.min(pos.top, innerHeight - h - 12)) }
   }
-  const chapterSteps = STEPS.filter(s => s.chapter === step.chapter)
+  const chapterSteps = steps.filter(s => s.chapter === step.chapter)
 
   return (
-    <div className="tour" role="dialog" aria-modal="true" aria-label={`Tour step ${i + 1} of ${STEPS.length}: ${step.title}`}>
+    <div className="tour" role="dialog" aria-modal="true" aria-label={`Tour step ${i + 1} of ${steps.length}: ${step.title}`}>
       {spot ? <div className="tour-spot" style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }} /> : <div className="tour-dim" />}
       <div ref={card} className={`tour-card ${phone ? 'sheet' : ''}`} style={phone ? null : { ...pos, width: W }}>
         <div className="row between">
@@ -151,12 +175,12 @@ export default function Tour() {
         <p className="small" style={{ margin: 0, lineHeight: 1.55 }}>{missing && step.fallback ? step.fallback : step.body}</p>
         {step.visual}
         {step.after && <p className="small" style={{ margin: '6px 0 0', lineHeight: 1.55 }}>{step.after}</p>}
-        <div className="tour-dots">{STEPS.map((s, n) => <button key={n} aria-label={`Step ${n + 1}`} className={n === i ? 'on' : n < i ? 'seen' : ''} onClick={() => setI(n)} />)}</div>
+        <div className="tour-dots">{steps.map((s, n) => <button key={n} aria-label={`Step ${n + 1}`} className={n === i ? 'on' : n < i ? 'seen' : ''} onClick={() => setI(n)} />)}</div>
         <div className="row between">
-          <button className="btn sm ghost" onClick={skip}>Skip tour</button>
+          <button className="btn sm ghost" onClick={skip}>{full ? 'Skip tour' : 'Close'}</button>
           <span className="row">
             {i > 0 && <button className="btn sm" onClick={back}><ArrowLeft size={13} /> Back</button>}
-            <button className="btn sm dark" autoFocus onClick={next}>{i === 0 ? 'Start tour' : i === STEPS.length - 1 ? 'Finish' : 'Next'} {i < STEPS.length - 1 && <ArrowRight size={13} />}</button>
+            <button className="btn sm dark" autoFocus onClick={next}>{i === 0 ? (full ? 'Start tour' : 'Show me') : i === steps.length - 1 ? 'Finish' : 'Next'} {i < steps.length - 1 && <ArrowRight size={13} />}</button>
           </span>
         </div>
       </div>
