@@ -9,7 +9,7 @@ npm run server   # sync server on :5190 — accounts, shared workspaces, PDF sto
 npm start        # production: build, then serve app + API + proxies from one process on :5190
 ```
 
-- **Data**: seeded with 50 real arXiv papers; persisted in localStorage, PDFs in IndexedDB. Import PDFs, arXiv (search or ID), Zotero (Web API or CSL JSON / RIS / BibTeX export), BibTeX, or manually.
+- **Data**: each user starts empty (a 50-paper sample library is one click away); persisted in localStorage, PDFs in IndexedDB. Import PDFs, arXiv (search or ID), Zotero (Web API or CSL JSON / RIS / BibTeX export), BibTeX, or manually.
 - **Reader**: continuous-scroll PDF viewer that resumes where you left off; highlights (Important / Idea / Question / Dictionary) that can span pages; **Explain** and **Auto-define** for any selection; read-aloud (browser text-to-speech).
 - **Reading list**: To read / Reading / Done with per-paper progress; "Continue reading" on the dashboard.
 - **Knowledge Notebook**: highlights, notes with `[[term]]` links and backlinks, related notes across papers, a personal dictionary that underlines terms everywhere, and Leitner flashcards with a daily streak and reminder.
