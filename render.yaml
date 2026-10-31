@@ -10,3 +10,7 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 20.20.2
+      # Postgres connection string (e.g. a free Neon database). Without it, accounts live on Render's
+      # throwaway disk and are wiped on every redeploy.
+      - key: DATABASE_URL
+        sync: false

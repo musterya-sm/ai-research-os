@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Home, HelpCircle, NotebookPen, PenLine, LayoutDashboard, Library, Network, Search, TableProperties, Radar, Lightbulb, Swords, History, Bot, Share2, Workflow, Boxes, Rss, FlaskConical, BookMarked, PanelLeftOpen, PanelLeftClose, Settings as Cog } from 'lucide-react'
+import { Home, HelpCircle, NotebookPen, PenLine, LayoutDashboard, Library, Network, Search, TableProperties, Radar, Lightbulb, Swords, History, Bot, Share2, Workflow, Boxes, Rss, FlaskConical, BookMarked, PanelLeftOpen, PanelLeftClose, UserRound, Settings as Cog } from 'lucide-react'
 import { nav, toast } from './components/ui.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import Shared from './views/Shared.jsx'
 import Reading from './views/Reading.jsx'
+import Account, { Avatar } from './views/Account.jsx'
+import PublicProfile from './views/PublicProfile.jsx'
+import { useSync, getAuth } from './lib/sync.js'
 import { KeySetupModal } from './components/KeySetup.jsx'
 import { useCheckAlerts } from './components/Alerts.jsx'
 import { due } from './lib/alerts.js'
@@ -93,9 +96,11 @@ export default function App() {
     return () => { clearTimeout(first); clearInterval(every) }
   }, [al.topics.join('|'), al.authors.join('|'), al.lastRun])
 
+  useSync()
+  const me = getAuth()?.user
   const wide = state.settings.railWide !== false // expanded unless the user collapsed it
   const [name, arg, sub] = route
-  const View = name === 'home' ? Landing : name === 'paper' ? PaperView : name === 'join' ? Join : ROUTES.find(r => r[0] === name)?.[3] || Dashboard
+  const View = name === 'home' ? Landing : name === 'paper' ? PaperView : name === 'join' ? Join : name === 'account' ? Account : name === 'u' ? PublicProfile : ROUTES.find(r => r[0] === name)?.[3] || Dashboard
 
   // Share links open as a standalone read-only page, without the rail or the tour.
   if (name === 's') return <ErrorBoundary><Shared data={arg} /></ErrorBoundary>
@@ -118,6 +123,9 @@ export default function App() {
           </span>
         ))}
         <button data-tour="help" onClick={() => startTour()} aria-label="Take the tour"><HelpCircle size={19} /><span className="lbl">Take the tour</span><span className="tip">Take the tour</span></button>
+        <button data-tour="account" className={`rail-me ${name === 'account' ? 'on' : ''}`} onClick={() => nav('/account')} aria-label={me ? `Account: @${me.username}` : 'Sign in'}>
+          {me ? <Avatar user={me} size={26} /> : <UserRound size={19} />}<span className="lbl">{me ? <>{me.name}<em style={{ marginLeft: 6 }}>@{me.username}</em></> : 'Sign in / Create account'}</span><span className="tip">{me ? `@${me.username}` : 'Sign in'}</span>
+        </button>
       </nav>
       <div className="sync-float"><SyncBadge /></div>
       <Tour />

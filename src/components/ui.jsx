@@ -10,7 +10,7 @@ export const authorLine = p => `${p.authors.join(' ')} · ${p.year} · arXiv: ${
 export function Head({ n, title, sub, children, violet }) {
   return (
     <div className="head">
-      <span className={`num ${violet ? 'violet' : ''}`}>{String(n).padStart(2, '0')}</span>
+      {n != null && <span className={`num ${violet ? 'violet' : ''}`}>{String(n).padStart(2, '0')}</span>}
       <div><h1>{title}</h1><p>{sub}</p></div>
       {children && <div className="actions">{children}</div>}
     </div>

@@ -77,6 +77,9 @@ textarea.input { resize: vertical; min-height: 80px; font-family: var(--sans); }
 .stat small { font-family: var(--mono); font-size: 10px; letter-spacing: 1px; color: var(--muted); text-transform: uppercase; }
 .stat b { display: block; font-family: var(--display); font-size: 28px; margin-top: 2px; }
 
+.avatar { display: inline-grid; place-items: center; border-radius: 50%; font-family: var(--mono); font-weight: 700; border: 2px solid var(--line); flex-shrink: 0; line-height: 1; }
+.rail .rail-me { margin-top: auto; }
+.rail .rail-me .avatar { border-color: #333; }
 .tag.wrap { white-space: normal; max-width: 100%; overflow-wrap: anywhere; text-align: left; }
 .hp-row { display: grid; gap: 4px; margin-top: 8px; padding-bottom: 8px; border-bottom: 1.5px solid var(--soft); }
 .tag { display: inline-block; border: 1.5px solid var(--line); font-family: var(--mono); font-size: 10px; padding: 1px 6px; margin: 0 4px 4px 0; background: var(--panel); white-space: nowrap; }

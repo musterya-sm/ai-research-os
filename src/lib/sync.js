@@ -38,10 +38,35 @@ async function api(path, { method = 'GET', body, server = auth?.server, token = 
 }
 
 // ---- account -----------------------------------------------------------------------------
-export async function signIn(mode, { server = '', email, password, name }) {
-  const { data } = await api(`/auth/${mode}`, { method: 'POST', body: { email, password, name }, server, token: null })
+// mode 'signup' takes { username, password, name, email? }; 'login' takes { login (username or email), password }.
+export async function signIn(mode, { server = '', ...body }) {
+  const { data } = await api(`/auth/${mode}`, { method: 'POST', body, server, token: null })
   setAuth({ server, token: data.token, user: data.user, workspace: null })
   return data.user
+}
+// Puts this browser on the account's own workspace: a new account uploads what's here; signing in on
+// another device merges this browser's items into the account's most recently used workspace.
+export async function attachPersonalWorkspace(state) {
+  const mine = (await listWorkspaces()).filter(w => w.role === 'Owner').sort((a, b) => b.updatedAt - a.updatedAt)
+  if (mine[0]) { await joinWorkspace(mine[0], 'merge'); return 'joined' }
+  await createWorkspace(`${auth.user.name || auth.user.username}'s research`, state)
+  return 'created'
+}
+export async function updateProfile(patch) {
+  const { data } = await api('/me', { method: 'PATCH', body: patch })
+  setAuth({ ...auth, user: data.user })
+  return data.user
+}
+export const changePassword = (current, next) => api('/me/password', { method: 'POST', body: { current, next } })
+export async function refreshMe() {
+  if (!auth?.token) return null
+  const { data } = await api('/me')
+  setAuth({ ...auth, user: data.user })
+  return data
+}
+export async function publicProfile(username) {
+  const { data } = await api(`/users/${encodeURIComponent(username)}`, { token: null })
+  return data
 }
 export async function signOut() {
   await api('/auth/logout', { method: 'POST' }).catch(() => {})

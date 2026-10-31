@@ -1,12 +1,14 @@
 // AI Research OS sync server — zero dependencies (Node 20+).
 // Accounts, shared workspaces with roles, PDF storage, live updates (SSE), arXiv / Semantic Scholar
-// proxies, and static hosting of the built app. Data lives in JSON files under DATA_DIR.
+// proxies, and static hosting of the built app. Data lives in Postgres when DATABASE_URL is set,
+// otherwise in JSON files under DATA_DIR (see storage.js).
 import http from 'node:http'
 import crypto from 'node:crypto'
 import fs from 'node:fs/promises'
 import { existsSync, createReadStream } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { openStorage } from './storage.js'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const PORT = Number(process.env.PORT) || 5190
@@ -15,29 +17,43 @@ const DIST = path.join(here, '..', 'dist')
 const WRITERS = ['Owner', 'Editor']
 const ROLES = ['Editor', 'Commenter', 'Viewer']
 
-await fs.mkdir(path.join(DATA, 'ws'), { recursive: true })
-await fs.mkdir(path.join(DATA, 'pdf'), { recursive: true })
+const store = await openStorage({ dir: DATA, url: process.env.DATABASE_URL })
 
 // ---- tiny JSON "database" ---------------------------------------------------------------
-const DB_FILE = path.join(DATA, 'db.json')
-const db = existsSync(DB_FILE) ? JSON.parse(await fs.readFile(DB_FILE, 'utf8')) : { users: {}, sessions: {}, workspaces: {} }
+const db = await store.getJson('db', { users: {}, sessions: {}, workspaces: {} })
 // Membership is keyed by user id. Older files keyed it by email: keep only members whose account exists.
 for (const ws of Object.values(db.workspaces)) {
   ws.members = ws.members.map(m => m.userId ? m : { userId: Object.values(db.users).find(u => u.email === m.email)?.id, role: m.role }).filter(m => m.userId)
   ws.invites ||= []
 }
-let saving = Promise.resolve()
-// Serialised atomic writes: write a temp file, then rename over the original.
-const writeJson = (file, data) => (saving = saving.then(async () => { const tmp = `${file}.${process.pid}.tmp`; await fs.writeFile(tmp, JSON.stringify(data)); await fs.rename(tmp, file) }))
-const saveDb = () => writeJson(DB_FILE, db)
-const wsFile = id => path.join(DATA, 'ws', `${id}.json`)
-const pdfFile = (ws, pid) => path.join(DATA, 'pdf', ws, crypto.createHash('sha256').update(pid).digest('hex') + '.json')
+const saveDb = () => store.putJson('db', db)
+const wsKey = id => `ws/${id}`
+const pdfKey = (ws, pid) => `pdf/${ws}/${crypto.createHash('sha256').update(pid).digest('hex')}`
+const readDoc = id => store.getJson(wsKey(id), {})
 
 const sha = s => crypto.createHash('sha256').update(s).digest('hex')
 const newId = (n = 12) => crypto.randomBytes(n).toString('base64url')
 const hashPw = (pw, salt) => crypto.scryptSync(pw, salt, 64).toString('hex')
-const userByEmail = email => Object.values(db.users).find(u => u.email === email)
-const pubUser = u => ({ id: u.id, email: u.email, name: u.name })
+const userByEmail = email => email && Object.values(db.users).find(u => u.email === email)
+const userByName = name => Object.values(db.users).find(u => u.username === name)
+const USERNAME = /^[a-z0-9][a-z0-9_.-]{2,23}$/
+const RESERVED = new Set(['admin', 'root', 'api', 'me', 'support', 'help', 'login', 'signup', 'settings', 'account', 'anthropic', 'openai', 'system'])
+const freeUsername = base => { let b = (base.toLowerCase().replace(/[^a-z0-9_.-]/g, '') || 'user').replace(/^[^a-z0-9]+/, '').slice(0, 20).padEnd(3, '0'), n = 0, u = b; while (userByName(u) || RESERVED.has(u)) u = `${b}${++n}`; return u }
+const AVATARS = ['#8b5cf6', '#d4f53c', '#3b82f6', '#f472b6', '#f59e0b', '#10b981', '#ef4444', '#0d0d0d']
+const cleanProfile = (p = {}, old = {}) => ({
+  bio: String(p.bio ?? old.bio ?? '').slice(0, 500),
+  affiliation: String(p.affiliation ?? old.affiliation ?? '').slice(0, 120),
+  interests: (Array.isArray(p.interests) ? p.interests : old.interests || []).map(x => String(x).trim().slice(0, 40)).filter(Boolean).slice(0, 12),
+  avatar: AVATARS.includes(p.avatar) ? p.avatar : old.avatar || AVATARS[0],
+  public: typeof p.public === 'boolean' ? p.public : !!old.public,
+})
+const pubUser = u => ({ id: u.id, username: u.username, email: u.email || '', name: u.name, profile: cleanProfile(u.profile), createdAt: u.createdAt })
+const SESSION_TTL = 90 * 864e5
+// Older accounts were email-only: give each a username derived from its email.
+for (const u of Object.values(db.users)) { if (!u.username) u.username = freeUsername((u.email || 'user').split('@')[0]); u.profile = cleanProfile(u.profile) }
+// Drop expired sessions on start.
+for (const [k, v] of Object.entries(db.sessions)) if (Date.now() - v.at > SESSION_TTL) delete db.sessions[k]
+await saveDb()
 
 // ---- http helpers -----------------------------------------------------------------------
 const send = (res, code, body, headers = {}) => {
@@ -58,7 +74,7 @@ async function readJson(req, limit) {
 function authUser(req) {
   const token = (req.headers.authorization || '').replace(/^Bearer /, '')
   const s = token && db.sessions[sha(token)]
-  const u = s && db.users[s.userId]
+  const u = s && Date.now() - s.at < SESSION_TTL && db.users[s.userId]
   if (!u) fail(401, 'Not signed in')
   return u
 }
@@ -96,7 +112,7 @@ const liveInvites = ws => (ws.invites = ws.invites.filter(i => Date.now() - i.at
 
 const wsSummary = (ws, user) => ({ id: ws.id, name: ws.name, version: ws.version, updatedAt: ws.updatedAt, role: ws.members.find(m => m.userId === user.id)?.role })
 const membersOut = ws => ({
-  members: ws.members.map(m => { const u = db.users[m.userId]; return { id: m.userId, email: u?.email || '', name: u?.name || 'Deleted user', role: m.role } }),
+  members: ws.members.map(m => { const u = db.users[m.userId]; return { id: m.userId, username: u?.username || '', email: u?.email || '', name: u?.name || 'Deleted user', role: m.role } }),
   invites: liveInvites(ws).map(i => ({ id: i.id, label: i.label, role: i.role, at: i.at })),
 })
 
@@ -110,24 +126,46 @@ async function api(req, res, url) {
     if (parts[1] === 'logout') { const t = (req.headers.authorization || '').replace(/^Bearer /, ''); delete db.sessions[sha(t)]; await saveDb(); return send(res, 204) }
     throttle(req)
     const b = await readJson(req, 10_000)
-    const email = String(b.email || '').trim().toLowerCase(), pw = String(b.password || '')
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) fail(400, 'Enter a valid email')
+    const pw = String(b.password || '')
     let user
     if (parts[1] === 'signup') {
+      const username = String(b.username || '').trim().toLowerCase(), email = String(b.email || '').trim().toLowerCase()
+      if (!USERNAME.test(username)) fail(400, 'Username: 3–24 characters, letters, numbers, dot, dash or underscore')
+      if (RESERVED.has(username) || userByName(username)) fail(409, 'That username is taken')
+      if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) fail(400, 'Enter a valid email, or leave it empty')
+      if (email && userByEmail(email)) fail(409, 'An account with this email already exists')
       if (pw.length < 8) fail(400, 'Password must be at least 8 characters')
-      if (userByEmail(email)) fail(409, 'An account with this email already exists')
+      if (pw.toLowerCase().includes(username)) fail(400, 'Password must not contain your username')
       const salt = newId(16)
-      user = { id: newId(), email, name: String(b.name || email.split('@')[0]).slice(0, 80), salt, hash: hashPw(pw, salt), createdAt: Date.now() }
+      user = { id: newId(), username, email, name: String(b.name || username).trim().slice(0, 80) || username, salt, hash: hashPw(pw, salt), createdAt: Date.now(), profile: cleanProfile() }
       db.users[user.id] = user
     } else if (parts[1] === 'login') {
-      user = userByEmail(email)
+      // Sign in with a username or an email address.
+      const id = String(b.login ?? b.username ?? b.email ?? '').trim().toLowerCase()
+      user = id.includes('@') ? userByEmail(id) : userByName(id)
       const ok = user && crypto.timingSafeEqual(Buffer.from(hashPw(pw, user.salt), 'hex'), Buffer.from(user.hash, 'hex'))
-      if (!ok) fail(401, 'Wrong email or password')
+      if (!ok) fail(401, 'Wrong username or password')
     } else fail(404, 'Not found')
     const token = newId(32)
     db.sessions[sha(token)] = { userId: user.id, at: Date.now() }
     await saveDb()
     return send(res, 200, { token, user: pubUser(user) })
+  }
+
+  // Lets the app warn when accounts live on a throwaway disk.
+  if (parts[0] === 'health' && M === 'GET') return send(res, 200, { ok: true, storage: store.kind })
+
+  // Public profile pages: only for users who switched "public profile" on.
+  if (parts[0] === 'users' && parts[1] && M === 'GET') {
+    const u = userByName(decodeURIComponent(parts[1]).toLowerCase())
+    if (!u || !u.profile?.public) fail(404, 'No public profile with that username')
+    // A few counts from the user's own workspace, never its contents.
+    const own = Object.values(db.workspaces).find(w => w.owner === u.id)
+    const doc = own ? await readDoc(own.id) : {}
+    const papers = Array.isArray(doc.papers) ? doc.papers : []
+    const stats = { papers: papers.length, read: papers.filter(p => p?.status === 'done').length, notes: Array.isArray(doc.highlights) ? doc.highlights.length : 0, projects: Array.isArray(doc.projects) ? doc.projects.length : 0 }
+    const { email, id, ...pub } = pubUser(u)
+    return send(res, 200, { ...pub, stats })
   }
 
   // SSE stream: authenticated by ticket (see events-ticket below).
@@ -149,9 +187,42 @@ async function api(req, res, url) {
 
   const user = authUser(req)
 
-  if (parts[0] === 'me' && M === 'GET') {
+  if (parts[0] === 'me' && !parts[1] && M === 'GET') {
     const workspaces = Object.values(db.workspaces).filter(w => w.members.some(m => m.userId === user.id)).map(w => wsSummary(w, user))
     return send(res, 200, { user: pubUser(user), workspaces })
+  }
+  if (parts[0] === 'me' && !parts[1] && M === 'PATCH') {
+    const b = await readJson(req, 20_000)
+    if (b.name !== undefined) user.name = String(b.name).trim().slice(0, 80) || user.username
+    if (b.email !== undefined) {
+      const email = String(b.email).trim().toLowerCase()
+      if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) fail(400, 'Enter a valid email, or leave it empty')
+      if (email && email !== user.email && userByEmail(email)) fail(409, 'Another account uses this email')
+      user.email = email
+    }
+    if (b.username !== undefined && String(b.username).toLowerCase() !== user.username) {
+      const username = String(b.username).trim().toLowerCase()
+      if (!USERNAME.test(username)) fail(400, 'Username: 3–24 characters, letters, numbers, dot, dash or underscore')
+      if (RESERVED.has(username) || userByName(username)) fail(409, 'That username is taken')
+      user.username = username
+    }
+    if (b.profile) user.profile = cleanProfile(b.profile, user.profile)
+    await saveDb()
+    return send(res, 200, { user: pubUser(user) })
+  }
+  if (parts[0] === 'me' && parts[1] === 'password' && M === 'POST') {
+    throttle(req)
+    const b = await readJson(req, 10_000)
+    const ok = crypto.timingSafeEqual(Buffer.from(hashPw(String(b.current || ''), user.salt), 'hex'), Buffer.from(user.hash, 'hex'))
+    if (!ok) fail(401, 'Current password is wrong')
+    const next = String(b.next || '')
+    if (next.length < 8) fail(400, 'New password must be at least 8 characters')
+    user.salt = newId(16); user.hash = hashPw(next, user.salt)
+    // Sign out every other device.
+    const mine = sha((req.headers.authorization || '').replace(/^Bearer /, ''))
+    for (const [k, v] of Object.entries(db.sessions)) if (v.userId === user.id && k !== mine) delete db.sessions[k]
+    await saveDb()
+    return send(res, 200, { ok: true })
   }
 
   if (parts[0] === 'invites' && parts[2] === 'accept' && M === 'POST') {
@@ -172,7 +243,7 @@ async function api(req, res, url) {
     const b = await readJson(req, 25e6)
     const ws = { id: newId(9), name: String(b.name || 'My workspace').slice(0, 80), owner: user.id, members: [{ userId: user.id, role: 'Owner' }], invites: [], version: 1, updatedAt: Date.now() }
     db.workspaces[ws.id] = ws
-    await writeJson(wsFile(ws.id), b.doc && typeof b.doc === 'object' ? b.doc : {})
+    await store.putJson(wsKey(ws.id), b.doc && typeof b.doc === 'object' ? b.doc : {})
     await saveDb()
     return send(res, 201, wsSummary(ws, user))
   }
@@ -183,7 +254,7 @@ async function api(req, res, url) {
   const sub = parts[2]
 
   if (!sub && M === 'GET') {
-    const doc = JSON.parse(await fs.readFile(wsFile(ws.id), 'utf8').catch(() => '{}'))
+    const doc = await readDoc(ws.id)
     return send(res, 200, { ...wsSummary(ws, user), doc, members: membersOut(ws) })
   }
   if (!sub && M === 'PATCH') {
@@ -198,11 +269,11 @@ async function api(req, res, url) {
     const b = await readJson(req, 25e6)
     // Optimistic concurrency: the client must have merged the latest version first.
     if (b.baseVersion !== ws.version) {
-      const doc = JSON.parse(await fs.readFile(wsFile(ws.id), 'utf8').catch(() => '{}'))
+      const doc = await readDoc(ws.id)
       return send(res, 409, { version: ws.version, doc })
     }
     if (!b.doc || typeof b.doc !== 'object') fail(400, 'Missing doc')
-    await writeJson(wsFile(ws.id), b.doc)
+    await store.putJson(wsKey(ws.id), b.doc)
     ws.version++; ws.updatedAt = Date.now(); await saveDb()
     broadcast(ws.id, { type: 'update', version: ws.version, by: user.name, client: String(b.client || '') })
     return send(res, 200, { version: ws.version })
@@ -245,28 +316,23 @@ async function api(req, res, url) {
 
   if (sub === 'pdfs') {
     const pid = decodeURIComponent(parts[3] || '')
-    const dir = path.join(DATA, 'pdf', ws.id)
-    if (!pid && M === 'GET') {
-      const index = JSON.parse(await fs.readFile(path.join(dir, 'index.json'), 'utf8').catch(() => '[]'))
-      return send(res, 200, index)
-    }
+    const idxKey = `pdf/${ws.id}/index`
+    if (!pid && M === 'GET') return send(res, 200, await store.getJson(idxKey, []))
     if (!pid || pid.length > 200) fail(400, 'Bad paper id')
     if (M === 'GET') {
-      const f = pdfFile(ws.id, pid)
-      if (!existsSync(f)) fail(404, 'No PDF stored for this paper')
+      const raw = await store.get(pdfKey(ws.id, pid))
+      if (raw == null) fail(404, 'No PDF stored for this paper')
       res.writeHead(200, { 'content-type': 'application/json' })
-      return createReadStream(f).pipe(res)
+      return res.end(raw)
     }
     if (M === 'PUT') {
       if (!WRITERS.includes(role)) fail(403, `${role}s can't upload files`)
       const b = await readJson(req, 80e6)
       if (typeof b.data !== 'string') fail(400, 'Missing data')
-      await fs.mkdir(dir, { recursive: true })
-      await fs.writeFile(pdfFile(ws.id, pid), JSON.stringify({ name: String(b.name || 'paper.pdf'), pages: Number(b.pages) || 0, text: String(b.text || ''), data: b.data }))
-      const idxFile = path.join(dir, 'index.json')
-      const index = new Set(JSON.parse(await fs.readFile(idxFile, 'utf8').catch(() => '[]')))
+      await store.putJson(pdfKey(ws.id, pid), { name: String(b.name || 'paper.pdf'), pages: Number(b.pages) || 0, text: String(b.text || ''), data: b.data })
+      const index = new Set(await store.getJson(idxKey, []))
       index.add(pid)
-      await writeJson(idxFile, [...index])
+      await store.putJson(idxKey, [...index])
       return send(res, 200, { ok: true })
     }
   }
@@ -311,4 +377,4 @@ http.createServer(async (req, res) => {
     if (!res.headersSent) send(res, known ? e.code : 500, { error: known ? e.message : 'Server error' })
     if (!known) console.error(e)
   }
-}).listen(PORT, () => console.log(`AI Research OS server on http://localhost:${PORT}`))
+}).listen(PORT, () => console.log(`AI Research OS server on http://localhost:${PORT} · storage: ${store.kind}`))
