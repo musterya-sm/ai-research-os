@@ -39,6 +39,9 @@ const initial = () => ({
   projects: [], // Reproduce Lab: { id, title, source, mode, spec, steps, chat, createdAt }
   review: { streak: 0, last: '', log: {} }, // daily flashcard streak; log = { 'YYYY-MM-DD': cards }
   chat: [],
+  // Topic alerts: followed arXiv topics/authors, the latest matches, and ids already shown or dismissed.
+  alerts: { topics: [], authors: [], lastRun: 0, items: [], seen: [] },
+  readLog: {}, // pages read per day: { 'YYYY-MM-DD': n }
   members: [
     { id: 'me', name: 'Arjun', role: 'Owner', you: true },
     { id: uid(), name: 'Priya Sharma', role: 'Editor' },
@@ -49,11 +52,15 @@ const initial = () => ({
     { id: uid(), who: 'Rahul', text: 'commented on MemGPT paper', at: Date.now() - 5 * 36e5 },
     { id: uid(), who: 'Arjun', text: 'created a new hypothesis', at: Date.now() - 864e5 },
   ],
-  settings: { name: 'Arjun', email: '', autoSummarize: true, autoCluster: true, gapAlerts: true, weeklyDigest: false, darkMode: false, defaultView: 'canvas', apiKey: '', model: 'claude-sonnet-5-5', notifyEmail: true, notifyApp: true, shareAnalytics: false, reminder: true, reminderTime: '09:00', zoteroUser: '', zoteroKey: '', s2Key: '' },
+  settings: { name: 'Arjun', email: '', autoSummarize: true, autoCluster: true, gapAlerts: true, weeklyDigest: false, darkMode: false, defaultView: 'canvas', apiKey: '', model: 'claude-sonnet-5-5', notifyEmail: true, notifyApp: true, shareAnalytics: false, reminder: true, reminderTime: '09:00', readingGoal: '', keyNudgeHidden: false, zoteroUser: '', zoteroKey: '', s2Key: '' },
 })
 
 const str = v => (typeof v === 'string' ? v : '')
 const arr = v => (Array.isArray(v) ? v : [])
+const normAlerts = x => {
+  const a = x && typeof x === 'object' ? x : {}, strs = v => (Array.isArray(v) ? v.filter(t => typeof t === 'string') : [])
+  return { topics: strs(a.topics), authors: strs(a.authors), lastRun: Number(a.lastRun) || 0, seen: strs(a.seen).slice(-1000), items: Array.isArray(a.items) ? a.items.filter(i => i && i.paper && typeof i.paper.id === 'string' && typeof i.paper.title === 'string') : [] }
+}
 export const dayKey = (t = Date.now()) => new Date(t).toLocaleDateString('en-CA')
 
 // Coerces the shared parts of a workspace (from a file or a sync server) to the shapes the app expects.
@@ -87,7 +94,8 @@ function reducer(s, a) {
       const fresh = a.papers.filter(p => !s.papers.some(x => x.id === p.id))
       return { ...s, papers: [...fresh, ...s.papers], activity: fresh.length ? log(`added ${fresh.length} paper${fresh.length > 1 ? 's' : ''}`) : s.activity }
     }
-    case 'updatePaper': return { ...s, papers: s.papers.map(p => p.id === a.id ? { ...p, ...a.patch } : p) }
+    case 'updatePaper': return { ...s, papers: s.papers.map(p => p.id !== a.id ? p : { ...p, ...a.patch, ...(a.patch.status === 'done' && p.status !== 'done' ? { doneAt: Date.now() } : {}) }) }
+    case 'alerts': return { ...s, alerts: { ...s.alerts, ...a.patch } }
     case 'deletePaper': return { ...s, papers: s.papers.filter(p => p.id !== a.id), highlights: s.highlights.filter(h => h.paperId !== a.id), collections: s.collections.map(c => ({ ...c, paperIds: c.paperIds.filter(id => id !== a.id) })) }
     case 'toggleStar': return { ...s, papers: s.papers.map(p => p.id === a.id ? { ...p, starred: !p.starred } : p) }
     case 'viewPaper': return { ...s, recent: [a.id, ...s.recent.filter(id => id !== a.id)].slice(0, 12) }
@@ -128,10 +136,15 @@ function reducer(s, a) {
         return { ...h, box, due: Date.now() + (a.remembered ? DAYS[box] * 864e5 : 0), reviewedAt: Date.now() }
       }) }
     }
-    case 'readPos': return { ...s, papers: s.papers.map(p => p.id !== a.id ? p : {
+    case 'readPos': {
+      // Only pages beyond the furthest one reached count as newly read.
+      const p0 = s.papers.find(p => p.id === a.id), fresh = Math.max(0, a.page - (p0?.readMax || 0)), day = dayKey()
+      const readLog = fresh ? { ...s.readLog, [day]: (s.readLog?.[day] || 0) + fresh } : s.readLog
+      return { ...s, readLog, papers: s.papers.map(p => p.id !== a.id ? p : {
       ...p, readPos: { page: a.page, scale: a.scale }, readMax: Math.max(p.readMax || 0, a.page), pages: a.pages || p.pages, lastReadAt: Date.now(),
       status: !p.status || p.status === 'toread' ? 'reading' : p.status,
     }) }
+    }
     case 'saveDraft': return a.draft.id && s.drafts.some(d => d.id === a.draft.id)
       ? { ...s, drafts: s.drafts.map(d => d.id === a.draft.id ? { ...d, ...a.draft, updatedAt: Date.now() } : d) }
       : { ...s, drafts: [{ ...a.draft, id: a.draft.id || uid(), updatedAt: Date.now() }, ...s.drafts], activity: log('started a writing draft') }
@@ -170,7 +183,7 @@ export function StoreProvider({ children }) {
         const base = initial()
         const settings = saved.settings && typeof saved.settings === 'object' ? saved.settings : {}
         const keep = k => (Array.isArray(saved[k]) ? { [k]: saved[k] } : {})
-        return { ...base, ...keep('recent'), ...(Array.isArray(saved.chat) ? { chat: saved.chat.filter(m => m && typeof m.text === 'string') } : {}), ...keep('members'), ...sanitizeDoc(saved), review: saved.review && typeof saved.review === 'object' ? { ...base.review, ...saved.review } : base.review, settings: { ...base.settings, ...settings } }
+        return { ...base, ...keep('recent'), ...(Array.isArray(saved.chat) ? { chat: saved.chat.filter(m => m && typeof m.text === 'string') } : {}), ...keep('members'), ...sanitizeDoc(saved), review: saved.review && typeof saved.review === 'object' ? { ...base.review, ...saved.review } : base.review, alerts: normAlerts(saved.alerts), readLog: saved.readLog && typeof saved.readLog === 'object' ? Object.fromEntries(Object.entries(saved.readLog).filter(([, n]) => Number.isFinite(n))) : {}, settings: { ...base.settings, ...settings } }
       }
     } catch {}
     return initial()

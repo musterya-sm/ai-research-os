@@ -4,10 +4,11 @@ import { Head, Tags, nav, toast } from '../components/ui.jsx'
 import { useStore } from '../lib/store.jsx'
 import { cosine, topTerms } from '../lib/nlp.js'
 import { searchArxiv } from '../lib/arxiv.js'
+import { AlertsPanel } from '../components/Alerts.jsx'
 
-export default function Feed() {
+export default function Feed({ arg }) {
   const { state, dispatch, index } = useStore()
-  const [tab, setTab] = useState('foryou')
+  const [tab, setTab] = useState(arg === 'alerts' ? 'alerts' : 'foryou')
   const [busy, setBusy] = useState(false)
   const [following, setFollowing] = useState(['Memory', 'LLM Agents'])
   const starredIdx = index.papers.map((p, i) => (p.starred ? i : -1)).filter(i => i >= 0)
@@ -39,17 +40,18 @@ export default function Feed() {
         <button className="btn" disabled={busy} onClick={fetchNew}>{busy ? <span className="spinner" /> : <RefreshCw size={14} />} Fetch from arXiv</button>
       </Head>
       <div className="card">
-        <div className="seg">{[['foryou', 'For you'], ['trending', 'Trending'], ['recent', 'Recent'], ['following', 'Following']].map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
+        <div className="seg">{[['alerts', `Alerts${state.alerts.items.length ? ` · ${state.alerts.items.length}` : ''}`], ['foryou', 'For you'], ['trending', 'Trending'], ['recent', 'Recent'], ['following', 'Following']].map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
         {tab === 'foryou' && <p className="small muted">Your interests: {interests.map(t => <span key={t} className="tag lime">{t}</span>)}</p>}
         {tab === 'following' && <div style={{ margin: '10px 0' }}>{tags.map(t => <button key={t} className={`tag ${following.includes(t) ? 'violet' : ''}`} style={{ cursor: 'pointer' }} onClick={() => setFollowing(f => f.includes(t) ? f.filter(x => x !== t) : [...f, t])}>{t}</button>)}</div>}
-        <div className="stack" style={{ marginTop: 12 }}>
+        {tab === 'alerts' && <div style={{ marginTop: 12 }}><AlertsPanel /></div>}
+        {tab !== 'alerts' && <div className="stack" style={{ marginTop: 12 }}>
           {items.slice(0, 15).map(({ p, why }) => (
             <div key={p.id} className="list-item" onClick={() => nav(`/paper/${p.id}`)}>
               <div className="grow"><div className="t">{p.title}</div><div className="muted tiny mono">{p.authors.join(' ')} · {p.year} · arXiv</div><div className="small" style={{ margin: '6px 0' }}>{p.abstract.slice(0, 160)}…</div><Tags tags={p.tags} /><div className="tiny muted mono">↳ {why}</div></div>
               <button className="btn sm" onClick={e => { e.stopPropagation(); dispatch({ type: 'toggleStar', id: p.id }); toast('Saved to starred') }}>Save</button>
             </div>))}
           {!items.length && <div className="empty">Nothing here yet.</div>}
-        </div>
+        </div>}
       </div>
     </>
   )

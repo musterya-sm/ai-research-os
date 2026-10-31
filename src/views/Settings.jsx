@@ -57,6 +57,7 @@ export default function Settings({ arg }) {
             <Row label="In-app notifications" k="notifyApp" />
           </div>}
           {(sec === 'Integrations' || sec === 'API Keys') && <div className="stack" style={{ maxWidth: 520 }}>
+            <button className="btn violet" style={{ alignSelf: 'flex-start' }} onClick={() => window.dispatchEvent(new Event('key:open'))}>{s.apiKey ? 'Change Claude key (guided)' : 'Set up Claude · step by step'}</button>
             <p className="small muted">Add an Anthropic API key to power Copilot, surveys, hypotheses, gap and contradiction analysis with Claude. Without a key the local engine is used. The key is stored only in this browser and sent directly to api.anthropic.com.</p>
             <label className="small">Anthropic API key<input className="input mono" type="password" placeholder="sk-ant-..." value={s.apiKey} onChange={e => set({ apiKey: e.target.value.trim() })} /></label>
             <label className="small">Model<select className="input" value={s.model} onChange={e => set({ model: e.target.value })}><option value="claude-sonnet-5-5">Claude Sonnet 5.5 (balanced)</option><option value="claude-opus-5-5">Claude Opus 5.5 (most capable)</option><option value="claude-haiku-5-5">Claude Haiku 5.5 (fastest)</option></select></label>

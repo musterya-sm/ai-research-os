@@ -58,7 +58,7 @@ export function PaperRow({ paper, right, onClick }) {
 export function AiBadge() {
   const { state } = useStore()
   const on = !!state.settings.apiKey
-  return <span className={`ai-badge ${on ? 'on' : ''}`} title={on ? 'Using Claude' : 'Add a Claude API key in Settings for LLM answers'}>{on ? `CLAUDE · ${state.settings.model}` : 'LOCAL ENGINE'}</span>
+  return <button type="button" className={`ai-badge ${on ? 'on' : ''}`} style={{ cursor: 'pointer', lineHeight: 'normal' }} onClick={() => window.dispatchEvent(new Event('key:open'))} title={on ? 'Using Claude. Click to change the key' : 'Local engine. Click to add a Claude key'}>{on ? `CLAUDE · ${state.settings.model}` : 'LOCAL ENGINE · ADD KEY'}</button>
 }
 
 // Runs a Claude prompt when a key is configured, otherwise the local fallback.

@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Home, HelpCircle, NotebookPen, PenLine, LayoutDashboard, Library, Network, Search, TableProperties, Radar, Lightbulb, Swords, History, Bot, Share2, Workflow, Boxes, Rss, FlaskConical, Settings as Cog } from 'lucide-react'
-import { nav } from './components/ui.jsx'
+import { Home, HelpCircle, NotebookPen, PenLine, LayoutDashboard, Library, Network, Search, TableProperties, Radar, Lightbulb, Swords, History, Bot, Share2, Workflow, Boxes, Rss, FlaskConical, BookMarked, PanelLeftOpen, PanelLeftClose, Settings as Cog } from 'lucide-react'
+import { nav, toast } from './components/ui.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import Shared from './views/Shared.jsx'
+import Reading from './views/Reading.jsx'
+import { KeySetupModal } from './components/KeySetup.jsx'
+import { useCheckAlerts } from './components/Alerts.jsx'
+import { due } from './lib/alerts.js'
 import Landing from './views/Landing.jsx'
 import Dashboard from './views/Dashboard.jsx'
 import PaperLibrary from './views/PaperLibrary.jsx'
@@ -47,11 +51,14 @@ export const ROUTES = [
   ['notes', 'Knowledge Notebook', NotebookPen, Notebook],
   ['write', 'Writing Studio', PenLine, Writing],
   ['lab', 'Reproduce Lab', FlaskConical, Lab],
+  ['reading', 'Reading Queue', BookMarked, Reading],
   ['settings', 'Settings', Cog, Settings],
 ]
 
 // Screen numbers follow the mockup (04 is Paper View, reached from the library); 17+ are additions.
-const NUMS = { dashboard: 1, library: 2, canvas: 3, search: 5, survey: 6, gaps: 7, hypotheses: 8, contradictions: 9, timeline: 10, copilot: 11, export: 12, workflows: 13, clusters: 14, feed: 15, notes: 17, write: 18, lab: 19, settings: 16 }
+// Rail section headings, keyed by the index of the first route in each group.
+const GROUPS = { 0: 'Workspace', 3: 'Analyse', 9: 'AI & team', 14: 'Notes & build', 18: 'Settings' }
+const NUMS = { dashboard: 1, library: 2, canvas: 3, search: 5, survey: 6, gaps: 7, hypotheses: 8, contradictions: 9, timeline: 10, copilot: 11, export: 12, workflows: 13, clusters: 14, feed: 15, notes: 17, write: 18, lab: 19, reading: 20, settings: 16 }
 
 const parse = () => (window.location.hash.replace(/^#\/?/, '') || 'home').split('/')
 
@@ -65,7 +72,7 @@ export default function App() {
     return () => { window.removeEventListener('hashchange', on); window.removeEventListener('keydown', key) }
   }, [])
 
-  const { state } = useStore()
+  const { state, dispatch } = useStore()
   useEffect(() => {
     const tick = () => checkReminder(state.settings, state.highlights)
     tick()
@@ -73,6 +80,20 @@ export default function App() {
     return () => clearInterval(t)
   }, [state.settings.reminder, state.settings.reminderTime, state.highlights])
 
+  // Topic alerts: check arXiv once a day, shortly after the app opens (and right after following something new).
+  const { check } = useCheckAlerts()
+  const al = state.alerts
+  useEffect(() => {
+    const tick = () => due(al) && check().then(n => {
+      if (!n) return
+      toast(`${n} new paper${n > 1 ? 's' : ''} on topics you follow`)
+      if (state.settings.notifyApp && window.Notification?.permission === 'granted') new Notification('AI Research OS', { body: `${n} new paper${n > 1 ? 's' : ''} on topics you follow`, icon: '/icon-192.png' })
+    }).catch(() => {})
+    const first = setTimeout(tick, 2500), every = setInterval(tick, 36e5)
+    return () => { clearTimeout(first); clearInterval(every) }
+  }, [al.topics.join('|'), al.authors.join('|'), al.lastRun])
+
+  const wide = state.settings.railWide !== false // expanded unless the user collapsed it
   const [name, arg, sub] = route
   const View = name === 'home' ? Landing : name === 'paper' ? PaperView : name === 'join' ? Join : ROUTES.find(r => r[0] === name)?.[3] || Dashboard
 
@@ -80,23 +101,27 @@ export default function App() {
   if (name === 's') return <ErrorBoundary><Shared data={arg} /></ErrorBoundary>
 
   return (
-    <div className="app">
-      <nav className="rail">
-        <div className="logo" onClick={() => nav('/')}>RO</div>
-        <button className={name === 'home' ? 'on' : ''} onClick={() => nav('/')}><Home size={19} /><span className="tip">Home</span></button>
+    <div className={`app ${wide ? 'wide' : ''}`}>
+      <nav className="rail" aria-label="Main">
+        <div className="rail-top">
+          <div className="logo" onClick={() => nav('/')}>RO{wide && <span className="lbl"> Research OS</span>}</div>
+          <button className="rail-toggle" title={wide ? 'Collapse sidebar' : 'Expand sidebar'} aria-label={wide ? 'Collapse sidebar' : 'Expand sidebar'} aria-expanded={wide} onClick={() => dispatch({ type: 'settings', patch: { railWide: !wide } })}>{wide ? <PanelLeftClose size={17} /> : <PanelLeftOpen size={17} />}</button>
+        </div>
+        <button className={name === 'home' ? 'on' : ''} onClick={() => nav('/')}><Home size={19} /><span className="lbl">Home</span><span className="tip">Home</span></button>
         <div className="sep" />
         {ROUTES.map(([key, label, Icon], i) => (
           <span key={key} style={{ display: 'contents' }}>
-            {(i === 3 || i === 9 || i === 14 || i === 17) && <div className="sep" />}
-            <button className={name === key || (key === 'library' && name === 'paper') ? 'on' : ''} onClick={() => nav(`/${key}`)}>
-              <Icon size={19} /><span className="tip">{String(NUMS[key]).padStart(2, "0")} · {label}</span>
+            {GROUPS[i] && (wide ? <div className="rail-group">{GROUPS[i]}</div> : <div className="sep" />)}
+            <button className={name === key || (key === 'library' && name === 'paper') ? 'on' : ''} onClick={() => nav(`/${key}`)} aria-label={label}>
+              <Icon size={19} /><span className="lbl"><em>{String(NUMS[key]).padStart(2, '0')}</em>{label}</span><span className="tip">{String(NUMS[key]).padStart(2, "0")} · {label}</span>
             </button>
           </span>
         ))}
-        <button data-tour="help" onClick={() => startTour()}><HelpCircle size={19} /><span className="tip">Take the tour</span></button>
+        <button data-tour="help" onClick={() => startTour()} aria-label="Take the tour"><HelpCircle size={19} /><span className="lbl">Take the tour</span><span className="tip">Take the tour</span></button>
       </nav>
       <div className="sync-float"><SyncBadge /></div>
       <Tour />
+      <KeySetupModal />
       <main><ErrorBoundary key={[name, arg, sub].join('/')}><View arg={arg} sub={sub} /></ErrorBoundary></main>
     </div>
   )

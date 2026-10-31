@@ -1,7 +1,9 @@
 // arXiv Atom API (proxied through Vite at /arxiv to avoid CORS).
-export async function searchArxiv(query, max = 10) {
+// opts.field: 'all' (default) or 'au' for an author; opts.newest sorts by submission date, for alerts.
+export async function searchArxiv(query, max = 10, opts = {}) {
   const isId = /^\d{4}\.\d{4,5}(v\d+)?$/.test(query.trim())
-  const qs = isId ? `id_list=${query.trim()}` : `search_query=all:${encodeURIComponent(query)}&sortBy=relevance`
+  const term = opts.phrase ? `"${query.replace(/"/g, '')}"` : query
+  const qs = isId ? `id_list=${query.trim()}` : `search_query=${opts.field || 'all'}:${encodeURIComponent(term)}&sortBy=${opts.newest ? 'submittedDate&sortOrder=descending' : 'relevance'}`
   const res = await fetch(`/arxiv/query?${qs}&max_results=${max}`)
   if (!res.ok) throw new Error(`arXiv ${res.status}`)
   const xml = new DOMParser().parseFromString(await res.text(), 'application/xml')
@@ -13,7 +15,7 @@ export async function searchArxiv(query, max = 10) {
     return {
       id: arxiv, arxiv, title: get('title'), authors: authors.length > 2 ? [authors[0], 'et al.'] : authors,
       year: +get('published').slice(0, 4), citations: 0, tags: inferTags(get('title') + ' ' + get('summary'), cats),
-      abstract: get('summary'), venue: 'arXiv', starred: false, addedAt: Date.now(),
+      abstract: get('summary'), venue: 'arXiv', starred: false, addedAt: Date.now(), published: get('published'),
     }
   }).filter(p => p.title)
 }

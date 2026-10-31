@@ -4,6 +4,7 @@ import { Head, AiBadge, Prose, nav, toast, useAI, ago } from '../components/ui.j
 import { useStore } from '../lib/store.jsx'
 import { download } from '../lib/exporter.js'
 import { copyShare, shareProject } from '../lib/share.js'
+import { KeyNudge } from '../components/KeySetup.jsx'
 import { search } from '../lib/nlp.js'
 import { generateCodebase, fixFiles, localCodebase, toNotebook, zip, checkCode, parseResults } from '../lib/autobuild.js'
 import { extractSpec, planForPaper, specForIdea, planForIdea, specPrompt, ideaPrompt, parseAI, scaffold, planMarkdown, delta, verdict, localMentor, mentorPrompt, normSpec, rid } from '../lib/reproduce.js'
@@ -336,6 +337,7 @@ function Build({ project, paper, save, setSpec }) {
 
   return (
     <div className="card" data-tour="lab-build">
+      <KeyNudge what="Build it for me only produces a fill-in template." />
       {!b && <>
         <h3>Let the platform recreate it</h3>
         <ol className="small" style={{ paddingLeft: 18, lineHeight: 1.7 }}>

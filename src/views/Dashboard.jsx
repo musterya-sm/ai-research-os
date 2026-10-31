@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Search, Plus, LayoutGrid, Sparkles, Flame, BookOpen } from 'lucide-react'
 import { Head, nav, authorLine, ago, Progress, progressOf } from '../components/ui.jsx'
 import ImportModal from '../components/ImportModal.jsx'
+import { AlertsCard } from '../components/Alerts.jsx'
 import { useStore, dayKey } from '../lib/store.jsx'
 
 export default function Dashboard() {
@@ -39,7 +40,7 @@ export default function Dashboard() {
             const reading = state.papers.filter(p => p.status === 'reading').sort((a, b) => (b.lastReadAt || 0) - (a.lastReadAt || 0)).slice(0, 4)
             const toRead = state.papers.filter(p => p.status === 'toread').length
             return (reading.length > 0 || toRead > 0) && <div className="card">
-              <div className="row between"><h3>Continue reading</h3><button className="btn sm ghost" onClick={() => nav('/library')}>{toRead} to read →</button></div>
+              <div className="row between"><h3>Continue reading</h3><button className="btn sm ghost" onClick={() => nav('/reading')}>Reading queue · {toRead} →</button></div>
               {!reading.length && <p className="muted small" style={{ margin: 0 }}>Nothing in progress. Open a paper from your To-read list to start.</p>}
               <div className="grid g2">{reading.map(p => (
                 <div key={p.id} className="list-item" onClick={() => nav(`/paper/${encodeURIComponent(p.id)}/${p.hasPdf ? 'pdf' : ''}`)}>
@@ -72,6 +73,7 @@ export default function Dashboard() {
               <button className="btn sm dark" style={{ marginTop: 10 }} onClick={() => nav('/notes/review')}>Review now</button>
             </div>
           })()}
+          <AlertsCard />
           <div className="card">
             <h3>Activity</h3>
             {state.activity.slice(0, 6).map(a => <div key={a.id} className="row between small" style={{ padding: '6px 0', borderBottom: '1.5px solid var(--soft)' }}><span><b>{a.who}</b> {a.text}</span><span className="muted tiny">{ago(a.at)}</span></div>)}

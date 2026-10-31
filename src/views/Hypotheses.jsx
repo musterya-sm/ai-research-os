@@ -3,6 +3,7 @@ import { Sparkles, Trash2, Save, FlaskConical, Share2 } from 'lucide-react'
 import { Head, AiBadge, useAI, nav, toast, ago } from '../components/ui.jsx'
 import { useStore } from '../lib/store.jsx'
 import { detectGaps } from '../lib/nlp.js'
+import { KeyNudge } from '../components/KeySetup.jsx'
 import { copyShare, shareHypotheses } from '../lib/share.js'
 import { paperContext } from '../lib/ai.js'
 
@@ -48,6 +49,7 @@ export default function Hypotheses() {
         <AiBadge />
         <button className="btn violet" disabled={busy} onClick={generate}>{busy ? <span className="spinner" /> : <Sparkles size={14} />} Generate</button>
       </Head>
+      <KeyNudge what="Hypotheses come from gap statistics, not reasoning over the papers." />
       {error && <p className="small" style={{ color: 'var(--red)' }}>{error}</p>}
       <div className="grid g2">
         <div className="card">

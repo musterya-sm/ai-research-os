@@ -5,6 +5,7 @@ import { useStore } from '../lib/store.jsx'
 import { search, coverage, passages } from '../lib/nlp.js'
 import { paperContext } from '../lib/ai.js'
 import { searchHighlights, highlightsContext } from '../lib/highlights.js'
+import { KeyNudge } from '../components/KeySetup.jsx'
 import { askPdfs, pdfPrompt, localPdfAnswer, short } from '../lib/askpdfs.js'
 
 const STARTERS = ['What are the main challenges in building memory systems for LLM agents?', 'Compare RAG and long-context approaches', 'Which papers should I read first on tool use?', 'Summarize how agent reflection has evolved']
@@ -54,6 +55,7 @@ export default function Copilot() {
   return (
     <>
       <Head n={11} title="AI Research Copilot" sub="Ask any research question" violet><AiBadge /><button className="btn sm" onClick={() => dispatch({ type: 'clearChat' })}><Trash2 size={13} /> Clear</button></Head>
+      <KeyNudge what="You get matching passages, not written answers." />
       <div className="card" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 150px)', minHeight: 420 }}>
         <div ref={end} className="grow stack" style={{ overflowY: 'auto', paddingRight: 6 }}>
           {!state.chat.length && <div className="stack"><p className="muted">Answers are grounded in the papers in your library. Try:</p>{STARTERS.map(s => <button key={s} className="btn ghost" style={{ textTransform: 'none', fontFamily: 'var(--sans)', justifyContent: 'flex-start', border: '2px dashed var(--muted)' }} onClick={() => ask(s)}>{s}</button>)}</div>}

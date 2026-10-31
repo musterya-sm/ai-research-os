@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react'
-import { PenLine, Sparkles, Copy, Download, Trash2, Plus, Search, Share2 } from 'lucide-react'
+import { PenLine, Sparkles, Copy, Download, Trash2, Plus, Search, Share2, FileUp } from 'lucide-react'
 import { Head, AiBadge, toast, useAI } from '../components/ui.jsx'
 import { useStore } from '../lib/store.jsx'
 import { KINDS, hlTitle, searchHighlights } from '../lib/highlights.js'
 import { citeKey, toBibtex, download } from '../lib/exporter.js'
 import { copyShare, shareDraft } from '../lib/share.js'
+import { KeyNudge } from '../components/KeySetup.jsx'
+import { toLatexProject, latexZip, openInOverleaf } from '../lib/overleaf.js'
 
 const SECTIONS = { related: 'Related Work', background: 'Background', intro: 'Introduction', discussion: 'Discussion' }
 const STYLES = { latex: 'LaTeX \\cite{}', author: '(Author, Year)', numeric: '[1] numeric' }
@@ -80,6 +82,7 @@ export default function Writing() {
   }
 
   const body = draft?.body || ''
+  const latex = () => toLatexProject({ title: draft?.title, body, author: state.settings.name, papers: state.papers })
   return (
     <>
       <Head n={18} title="Writing Studio" sub="Turn your highlights into a cited draft section" violet>
@@ -88,6 +91,7 @@ export default function Writing() {
         </select>
         <button className="btn" onClick={() => { setDraftId(null); setSel(new Set()) }}><Plus size={14} /> New</button>
       </Head>
+      <KeyNudge what="Drafts are stitched from templates, not written." />
       <div className="grid g2">
         <div className="card" style={{ alignSelf: 'start' }}>
           <div className="row between"><h3 style={{ margin: 0 }}>1 · Pick sources ({sel.size})</h3>
@@ -123,7 +127,8 @@ export default function Writing() {
             <div className="row wrap" style={{ marginTop: 10 }}>
               <button className="btn sm" disabled={!body} onClick={() => navigator.clipboard.writeText(body).then(() => toast('Copied'))}><Copy size={13} /> Copy</button>
               <button className="btn sm" disabled={!body} onClick={() => download(`${draft?.title || 'draft'}.md`, body)}><Download size={13} /> .md</button>
-              <button className="btn sm" disabled={!body} onClick={() => download(`${draft?.title || 'draft'}.tex`, `\\section{${SECTIONS[section]}}\n${body.replace(/^## .*\n/, '').replace(/\*\*(.+?)\*\*/g, '\\textbf{$1}').replace(/\*(.+?)\*/g, '\\emph{$1}').replace(/“|”/g, '"')}\n\n\\bibliographystyle{plain}\n\\bibliography{references}\n`)}><PenLine size={13} /> .tex</button>
+              <button className="btn sm violet" disabled={!body} title="Creates a new Overleaf project with main.tex and references.bib" onClick={() => openInOverleaf(latex())}><FileUp size={13} /> Open in Overleaf</button>
+              <button className="btn sm" disabled={!body} title="LaTeX project as a .zip: Overleaf → New Project → Upload Project" onClick={() => download(`${(draft?.title || 'draft').replace(/[^\w-]+/g, '-')}-latex.zip`, latexZip(latex()), 'application/zip')}><PenLine size={13} /> LaTeX .zip</button>
               <button className="btn sm" disabled={!cited.length} onClick={() => download('references.bib', toBibtex(cited))}><Download size={13} /> references.bib ({cited.length})</button>
               {draft && body && <button className="btn sm" title="Read-only link anyone can open" onClick={() => copyShare(shareDraft(state, { ...draft, body }), toast)}><Share2 size={13} /> Share link</button>}
               {draft && <button className="btn sm" onClick={() => confirm('Delete this draft?') && (dispatch({ type: 'deleteDraft', id: draft.id }), setDraftId(null))}><Trash2 size={13} /></button>}

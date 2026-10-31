@@ -22,6 +22,22 @@ a { color: inherit; }
 .rail button .tip { position: absolute; left: 50px; background: var(--ink); color: var(--bg); border: 2px solid var(--lime); padding: 3px 8px; font-family: var(--mono); font-size: 11px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .12s; z-index: 50; }
 .rail button:hover .tip { opacity: 1; }
 .rail .sep { width: 28px; height: 1px; background: #333; margin: 4px 0; flex-shrink: 0; }
+.rail .lbl, .rail-group { display: none; }
+.rail-top { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-bottom: 4px; }
+.rail .logo { margin-bottom: 0; }
+.rail button.rail-toggle { width: 32px; height: 28px; color: #8a8a84; }
+/* Expanded rail: every screen's number and name, with group headings instead of divider lines. */
+.app.wide { grid-template-columns: 252px 1fr; }
+.app.wide .rail { align-items: stretch; padding: 14px 10px; gap: 2px; }
+.app.wide .rail-top { flex-direction: row; justify-content: space-between; padding: 0 4px 0 8px; margin-bottom: 8px; }
+.app.wide .rail .logo .lbl { display: inline; color: #bdbdb6; font-family: var(--mono); font-size: 11px; letter-spacing: 0; text-transform: uppercase; }
+.app.wide .rail button { width: 100%; height: 34px; display: flex; align-items: center; justify-content: flex-start; gap: 10px; padding: 0 10px; text-align: left; }
+.app.wide .rail button.rail-toggle { width: 32px; height: 28px; padding: 0; justify-content: center; }
+.app.wide .rail .lbl { display: block; font-family: var(--sans); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app.wide .rail .lbl em { font-style: normal; font-family: var(--mono); font-size: 10px; opacity: .55; margin-right: 8px; }
+.app.wide .rail button .tip { display: none; }
+.app.wide .rail .sep { width: auto; margin: 6px 4px; }
+.app.wide .rail-group { display: block; font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: #77776f; padding: 10px 10px 4px; flex-shrink: 0; }
 main { overflow-y: auto; padding: 22px 28px 60px; }
 
 .head { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 18px; }
@@ -116,7 +132,7 @@ table.data tr:hover td { background: var(--soft); }
 .pixel { display: grid; grid-template-columns: repeat(8, 14px); gap: 3px; }
 .pixel i { width: 14px; height: 14px; background: var(--ink); display: block; }
 .hero-title { font-family: var(--display); font-size: clamp(40px, 6vw, 72px); line-height: .95; margin: 0; letter-spacing: -1px; }
-.ai-badge { font-family: var(--mono); font-size: 10px; padding: 2px 6px; border: 1.5px solid var(--line); }
+.ai-badge { font-family: var(--mono); font-size: 10px; padding: 2px 6px; border: 1.5px solid var(--line); background: transparent; color: inherit; }
 .ai-badge.on { background: var(--violet); color: #fff; border-color: var(--violet); }
 @media print { .rail, .no-print { display: none !important; } .app { display: block; } }
 
@@ -148,6 +164,12 @@ a.wikilink { color: var(--violet); text-decoration: none; border-bottom: 1.5px s
   .rail .logo { margin: 0 8px 0 4px; }
   .rail .sep { width: 1px; height: 24px; margin: 0 2px; }
   .rail button .tip { display: none; }
+  .app.wide { grid-template-columns: 1fr; }
+  .app.wide .rail { flex-direction: row; align-items: center; padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); gap: 4px; }
+  .app.wide .rail button { width: 40px; height: 40px; padding: 0; justify-content: center; }
+  .app .rail .lbl, .app.wide .rail-group, .rail-toggle { display: none !important; }
+  .rail-top { flex-direction: row; margin: 0; }
+  .app.wide .rail .sep { width: 1px; height: 24px; margin: 0 2px; }
   .head { flex-wrap: wrap; }
   .head .actions { margin-left: 0; width: 100%; }
   .reader-grid { grid-template-columns: 1fr !important; }
