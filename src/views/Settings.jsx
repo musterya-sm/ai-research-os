@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Head, Toggle, toast } from '../components/ui.jsx'
-import { useStore } from '../lib/store.jsx'
+import { useStore, untouchedSample } from '../lib/store.jsx'
 import { askClaude, hasAI, aiName, PROVIDERS } from '../lib/ai.js'
 import { listPdfIds, deletePdf } from '../lib/pdfstore.js'
 import { workspaceJson, download } from '../lib/exporter.js'
@@ -67,6 +67,7 @@ export default function Settings({ arg }) {
           </div>}
           {sec === 'Billing' && <p>Local workspace — free. Claude usage is billed to your own Anthropic account.</p>}
           {sec === 'Data & Privacy' && <div className="stack" style={{ maxWidth: 520 }}>
+            <div className="row wrap"><button className="btn" onClick={() => { dispatch({ type: 'loadSample' }); toast('Sample library loaded') }}>Load sample library</button><button className="btn" disabled={!untouchedSample(state).length} onClick={() => confirm(`Remove ${untouchedSample(state).length} untouched sample papers?`) && (dispatch({ type: 'removeSample' }), toast('Sample papers removed'))}>Remove sample papers ({untouchedSample(state).length})</button></div>
             <Row label="Share anonymous analytics" k="shareAnalytics" hint="No analytics are collected; data only leaves this browser if you turn on sync" />
             <p className="small">{state.papers.length} papers, {state.collections.length} collections, {Object.keys(state.notes).length} notes, {state.papers.filter(p => p.hasPdf).length} PDFs stored locally.</p>
             <div className="row"><button className="btn" onClick={async () => download('research-os-workspace.json', await workspaceJson(state, { includePdfs: true }), 'application/json')}>Export all data</button>

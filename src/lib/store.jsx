@@ -21,16 +21,30 @@ function defaultCanvas() {
   return { nodes, edges }
 }
 
-const initial = () => ({
-  papers: SEED_PAPERS,
+// The demo library is opt-in: new users start empty and build their own from the welcome card.
+const SAMPLE_IDS = new Set(SEED_PAPERS.map(p => p.id))
+const SAMPLE_STARRED = new Set(SEED_PAPERS.filter(p => p.starred).map(p => p.id))
+const DEMO_PEOPLE = new Set(['Priya Sharma', 'Rahul Verma', 'Priya', 'Rahul'])
+export const sample = () => ({
+  papers: SEED_PAPERS.map(p => ({ ...p, sample: true })),
   collections: [
     { id: 'agents', name: 'AI Agents', paperIds: SEED_PAPERS.filter(p => p.tags.includes('LLM Agents')).map(p => p.id) },
     { id: 'memory', name: 'Memory', paperIds: SEED_PAPERS.filter(p => p.tags.includes('Memory')).map(p => p.id) },
     { id: 'rag', name: 'RAG', paperIds: SEED_PAPERS.filter(p => p.tags.includes('RAG')).map(p => p.id) },
   ],
-  notes: {},
   recent: ['2310.08560', '2201.11903', '2404.13501', '2304.03442'],
   canvas: defaultCanvas(),
+})
+// A sample paper counts as untouched if the user never annotated, read, re-starred or built on it.
+export const untouchedSample = s => s.papers.filter(p => SAMPLE_IDS.has(p.id) && !p.hasPdf && !p.status && !s.notes?.[p.id] && !!p.starred === SAMPLE_STARRED.has(p.id)
+  && !s.highlights.some(h => h.paperId === p.id) && !s.projects?.some(x => x.source?.paperId === p.id))
+
+const initial = () => ({
+  papers: [],
+  collections: [],
+  notes: {},
+  recent: [],
+  canvas: { nodes: [], edges: [] },
   hypotheses: [],
   // Highlights from the PDF reader plus manual entries. kind: important | idea | question | term.
   // Terms form the dictionary; box/due drive Leitner-style flashcard review.
@@ -42,17 +56,9 @@ const initial = () => ({
   // Topic alerts: followed arXiv topics/authors, the latest matches, and ids already shown or dismissed.
   alerts: { topics: [], authors: [], lastRun: 0, items: [], seen: [] },
   readLog: {}, // pages read per day: { 'YYYY-MM-DD': n }
-  members: [
-    { id: 'me', name: 'Arjun', role: 'Owner', you: true },
-    { id: uid(), name: 'Priya Sharma', role: 'Editor' },
-    { id: uid(), name: 'Rahul Verma', role: 'Viewer' },
-  ],
-  activity: [
-    { id: uid(), who: 'Priya', text: 'added 3 papers', at: Date.now() - 2 * 36e5 },
-    { id: uid(), who: 'Rahul', text: 'commented on MemGPT paper', at: Date.now() - 5 * 36e5 },
-    { id: uid(), who: 'Arjun', text: 'created a new hypothesis', at: Date.now() - 864e5 },
-  ],
-  settings: { name: 'Arjun', email: '', autoSummarize: true, autoCluster: true, gapAlerts: true, weeklyDigest: false, darkMode: false, defaultView: 'canvas', apiKey: '', model: 'claude-sonnet-5-5', notifyEmail: true, notifyApp: true, shareAnalytics: false, reminder: true, reminderTime: '09:00', readingGoal: '', keyNudgeHidden: false, provider: 'anthropic', openaiKey: '', openaiModel: 'gpt-4.1-mini', zoteroUser: '', zoteroKey: '', s2Key: '' },
+  members: [{ id: 'me', name: '', role: 'Owner', you: true }],
+  activity: [],
+  settings: { name: '', email: '', autoSummarize: true, autoCluster: true, gapAlerts: true, weeklyDigest: false, darkMode: false, defaultView: 'canvas', apiKey: '', model: 'claude-sonnet-5-5', notifyEmail: true, notifyApp: true, shareAnalytics: false, reminder: true, reminderTime: '09:00', readingGoal: '', keyNudgeHidden: false, provider: 'anthropic', openaiKey: '', openaiModel: 'gpt-4.1-mini', zoteroUser: '', zoteroKey: '', s2Key: '' },
 })
 
 const str = v => (typeof v === 'string' ? v : '')
@@ -168,6 +174,26 @@ function reducer(s, a) {
       return { ...initial(), ...a.state, ...sanitizeDoc(a.state), settings: { ...initial().settings, ...settings, apiKey: s.settings.apiKey, openaiKey: s.settings.openaiKey, zoteroKey: s.settings.zoteroKey, s2Key: s.settings.s2Key } }
     }
     case 'reset': return initial()
+    case 'loadSample': {
+      const x = sample(), have = new Set(s.papers.map(p => p.id))
+      const canvas = s.canvas.nodes.length ? s.canvas : x.canvas
+      const collections = [...s.collections, ...x.collections.filter(c => !s.collections.some(y => y.name === c.name))]
+      return { ...s, papers: [...s.papers, ...x.papers.filter(p => !have.has(p.id))], collections, canvas, recent: s.recent.length ? s.recent : x.recent, activity: log('loaded the sample library') }
+    }
+    case 'removeSample': {
+      const gone = new Set(untouchedSample(s).map(p => p.id))
+      const nodes = s.canvas.nodes.filter(n => !(n.paperId && gone.has(n.paperId)))
+      const keep = new Set(nodes.map(n => n.id))
+      return { ...s,
+        papers: s.papers.filter(p => !gone.has(p.id)),
+        collections: s.collections.map(c => ({ ...c, paperIds: c.paperIds.filter(id => !gone.has(id)) })).filter(c => c.paperIds.length || !['agents', 'memory', 'rag'].includes(c.id)),
+        canvas: { nodes, edges: s.canvas.edges.filter(e => keep.has(e.from) && keep.has(e.to)) },
+        recent: s.recent.filter(id => !gone.has(id)),
+        members: s.members.filter(m => !DEMO_PEOPLE.has(m.name)).map(m => (m.you && m.name === 'Arjun' ? { ...m, name: s.settings.name === 'Arjun' ? '' : s.settings.name } : m)),
+        activity: s.activity.filter(x => !DEMO_PEOPLE.has(x.who)),
+        settings: s.settings.name === 'Arjun' ? { ...s.settings, name: '' } : s.settings,
+      }
+    }
     default: return s
   }
 }
@@ -183,7 +209,7 @@ export function StoreProvider({ children }) {
         const base = initial()
         const settings = saved.settings && typeof saved.settings === 'object' ? saved.settings : {}
         const keep = k => (Array.isArray(saved[k]) ? { [k]: saved[k] } : {})
-        return { ...base, ...keep('recent'), ...(Array.isArray(saved.chat) ? { chat: saved.chat.filter(m => m && typeof m.text === 'string') } : {}), ...keep('members'), ...sanitizeDoc(saved), review: saved.review && typeof saved.review === 'object' ? { ...base.review, ...saved.review } : base.review, alerts: normAlerts(saved.alerts), readLog: saved.readLog && typeof saved.readLog === 'object' ? Object.fromEntries(Object.entries(saved.readLog).filter(([, n]) => Number.isFinite(n))) : {}, settings: { ...base.settings, ...settings } }
+        return { ...base, ...keep('recent'), ...(Array.isArray(saved.chat) ? { chat: saved.chat.filter(m => m && typeof m.text === 'string') } : {}), ...keep('members'), ...sanitizeDoc(saved), review: saved.review && typeof saved.review === 'object' ? { ...base.review, ...saved.review } : base.review, alerts: normAlerts(saved.alerts), readLog: saved.readLog && typeof saved.readLog === 'object' ? Object.fromEntries(Object.entries(saved.readLog).filter(([, n]) => Number.isFinite(n))) : {}, settings: { ...base.settings, ...settings, setupBusy: false } }
       }
     } catch {}
     return initial()

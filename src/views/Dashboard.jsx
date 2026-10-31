@@ -3,6 +3,7 @@ import { Search, Plus, LayoutGrid, Sparkles, Flame, BookOpen } from 'lucide-reac
 import { Head, nav, authorLine, ago, Progress, progressOf } from '../components/ui.jsx'
 import ImportModal from '../components/ImportModal.jsx'
 import { AlertsCard } from '../components/Alerts.jsx'
+import { Welcome, SampleBanner } from '../components/Welcome.jsx'
 import { useStore, dayKey } from '../lib/store.jsx'
 
 export default function Dashboard() {
@@ -19,10 +20,12 @@ export default function Dashboard() {
   return (
     <>
       <Head n={1} title="Dashboard" sub="Your research universe at a glance" />
+      <Welcome />
+      <SampleBanner />
       <div className="grid side-r">
         <div className="stack">
           <div className="card">
-            <h2 style={{ margin: 0, fontFamily: 'var(--mono)' }}>{greet}, {(state.settings.name || 'there').toUpperCase()} 👋</h2>
+            <h2 style={{ margin: 0, fontFamily: 'var(--mono)' }}>{greet}{state.settings.name ? `, ${state.settings.name.toUpperCase()}` : ''} 👋</h2>
             <p className="muted" style={{ margin: '4px 0 14px' }}>What are we exploring today?</p>
             <form className="search" onSubmit={e => { e.preventDefault(); nav(`/search/${encodeURIComponent(q)}`) }}>
               <Search size={16} /><input placeholder="Search papers, authors, topics..." value={q} onChange={e => setQ(e.target.value)} /><span className="kbd">/</span>

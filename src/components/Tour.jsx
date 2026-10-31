@@ -57,17 +57,18 @@ export default function Tour() {
   const card = useRef()
   const step = i === null ? null : STEPS[i]
 
-  // First visit → start automatically (not on invite links or the landing page).
+  // First visit → start automatically once the library has papers (not on invite, share or profile links, or the landing page).
+  const hasPapers = state.papers.length > 0 && !state.settings.setupBusy
   useEffect(() => {
     const inApp = () => { const r = location.hash.replace(/^#\/?/, '').split('/')[0]; return !!r && !['home', 'join', 'u', 's'].includes(r) }
-    let auto = !state.settings.tourDone
+    let auto = !state.settings.tourDone && hasPapers
     const maybe = () => { if (auto && inApp()) { auto = false; setI(0) } }
     maybe()
     const on = e => { auto = false; const c = e.detail?.chapter; setI(c ? STEPS.findIndex(s => s.chapter === c) : 0) }
     window.addEventListener('tour:start', on)
     window.addEventListener('hashchange', maybe)
     return () => { window.removeEventListener('tour:start', on); window.removeEventListener('hashchange', maybe) }
-  }, [])
+  }, [hasPapers])
 
   // Go to the step's screen, wait for its target, scroll it into view inside <main>.
   useEffect(() => {
