@@ -11,7 +11,9 @@ export const SOURCES = {
 const ARXIV_ID = /^\d{4}\.\d{4,5}$/
 export const isArxivId = id => ARXIV_ID.test(id || '')
 // Where to read a paper online, whatever its source.
-export const paperUrl = p => isArxivId(p.arxiv) ? `https://arxiv.org/abs/${p.arxiv}` : p.url || (p.doi ? `https://doi.org/${p.doi}` : '')
+// Only http(s) links are ever rendered, so a paper can't smuggle in a javascript: or data: URL.
+export const safeHttp = u => { try { const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : '' } catch { return '' } }
+export const paperUrl = p => isArxivId(p.arxiv) ? `https://arxiv.org/abs/${p.arxiv}` : safeHttp(p.url) || (p.doi ? `https://doi.org/${encodeURI(p.doi)}` : '')
 export const sourceName = p => isArxivId(p.arxiv) ? 'arXiv' : p.pmid && !p.doi ? 'PubMed' : p.doi ? 'DOI' : 'Link'
 
 const short = authors => authors.length > 2 ? [authors[0], 'et al.'] : authors

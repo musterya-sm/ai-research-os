@@ -70,9 +70,10 @@ const normAlerts = x => {
 export const dayKey = (t = Date.now()) => new Date(t).toLocaleDateString('en-CA')
 
 // Coerces the shared parts of a workspace (from a file or a sync server) to the shapes the app expects.
+const safeUrl = u => { try { return /^https?:$/.test(new URL(u).protocol) ? String(u) : undefined } catch { return undefined } }
 export function sanitizeDoc(d) {
   const papers = arr(d.papers).filter(p => p && typeof p.id === 'string' && typeof p.title === 'string').map(p => ({
-    ...p, arxiv: str(p.arxiv) || p.id, abstract: str(p.abstract), method: str(p.method), dataset: str(p.dataset), finding: str(p.finding), limitation: str(p.limitation), venue: str(p.venue),
+    ...p, arxiv: str(p.arxiv) || p.id, url: safeUrl(p.url), abstract: str(p.abstract), method: str(p.method), dataset: str(p.dataset), finding: str(p.finding), limitation: str(p.limitation), venue: str(p.venue),
     year: Number(p.year) || 0, citations: Number(p.citations) || 0,
     authors: arr(p.authors).map(String), tags: arr(p.tags).map(String),
     status: ['toread', 'reading', 'done'].includes(p.status) ? p.status : undefined,

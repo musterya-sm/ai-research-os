@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { BookmarkPlus, Check, ExternalLink } from 'lucide-react'
 import { useStore } from '../lib/store.jsx'
-import { lookupPaper, paperUrl, sourceName } from '../lib/sources.js'
+import { lookupPaper, paperUrl, sourceName, safeHttp } from '../lib/sources.js'
 import { inferTags } from '../lib/arxiv.js'
 import { nav } from '../components/ui.jsx'
 
@@ -12,7 +12,7 @@ const params = () => new URLSearchParams(location.hash.split('?')[1] || '')
 
 export default function Save() {
   const { state, dispatch } = useStore()
-  const [q] = useState(() => { const p = params(); return { url: p.get('u') || '', title: p.get('t') || '', doi: p.get('d') || '' } })
+  const [q] = useState(() => { const p = params(); return { url: safeHttp(p.get('u') || ''), title: (p.get('t') || '').slice(0, 300), doi: (p.get('d') || '').slice(0, 200) } })
   const [paper, setPaper] = useState(null)
   const [busy, setBusy] = useState(true)
   const [col, setCol] = useState('')
