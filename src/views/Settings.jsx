@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Head, Toggle, toast } from '../components/ui.jsx'
 import { useStore } from '../lib/store.jsx'
-import { askClaude } from '../lib/ai.js'
+import { askClaude, hasAI, aiName, PROVIDERS } from '../lib/ai.js'
 import { listPdfIds, deletePdf } from '../lib/pdfstore.js'
 import { workspaceJson, download } from '../lib/exporter.js'
 import SyncPanel from '../components/SyncPanel.jsx'
@@ -19,7 +19,7 @@ export default function Settings({ arg }) {
   const Row = ({ label, k, hint }) => <div className="row between" style={{ padding: '10px 0', borderBottom: '1.5px solid var(--soft)' }}><div><div>{label}</div>{hint && <div className="muted tiny">{hint}</div>}</div><Toggle label={label} on={!!s[k]} onChange={v => set({ [k]: v })} /></div>
   async function test() {
     setTesting(true)
-    try { const r = await askClaude(s, { prompt: 'Reply with the single word: connected', maxTokens: 10 }); toast(r ? `Claude: ${r.trim()}` : 'Add a key first') } catch (e) { toast(e.message) } finally { setTesting(false) }
+    try { const r = await askClaude(s, { prompt: 'Reply with the single word: connected', maxTokens: 10 }); toast(r ? `${PROVIDERS[s.provider] || 'AI'}: ${r.trim()}` : 'Add a key first') } catch (e) { toast(e.message) } finally { setTesting(false) }
   }
 
   return (
@@ -57,11 +57,11 @@ export default function Settings({ arg }) {
             <Row label="In-app notifications" k="notifyApp" />
           </div>}
           {(sec === 'Integrations' || sec === 'API Keys') && <div className="stack" style={{ maxWidth: 520 }}>
-            <button className="btn violet" style={{ alignSelf: 'flex-start' }} onClick={() => window.dispatchEvent(new Event('key:open'))}>{s.apiKey ? 'Change Claude key (guided)' : 'Set up Claude · step by step'}</button>
-            <p className="small muted">Add an Anthropic API key to power Copilot, surveys, hypotheses, gap and contradiction analysis with Claude. Without a key the local engine is used. The key is stored only in this browser and sent directly to api.anthropic.com.</p>
-            <label className="small">Anthropic API key<input className="input mono" type="password" placeholder="sk-ant-..." value={s.apiKey} onChange={e => set({ apiKey: e.target.value.trim() })} /></label>
-            <label className="small">Model<select className="input" value={s.model} onChange={e => set({ model: e.target.value })}><option value="claude-sonnet-5-5">Claude Sonnet 5.5 (balanced)</option><option value="claude-opus-5-5">Claude Opus 5.5 (most capable)</option><option value="claude-haiku-5-5">Claude Haiku 5.5 (fastest)</option></select></label>
-            <div className="row"><button className="btn violet" disabled={!s.apiKey || testing} onClick={test}>{testing ? <span className="spinner" /> : 'Test connection'}</button>{s.apiKey && <button className="btn" onClick={() => set({ apiKey: '' })}>Remove key</button>}</div>
+            <div className="card flat small">{hasAI(s) ? <>AI is on: <b>{aiName(s)}</b>. {s.apiKey && s.openaiKey ? 'Both keys are saved; switch below.' : ''}</> : <>No AI key yet. The built-in local engine is in use.</>}</div>
+            <button className="btn violet" style={{ alignSelf: 'flex-start' }} onClick={() => window.dispatchEvent(new Event('key:open'))}>{hasAI(s) ? 'Change key or provider (guided)' : 'Connect Claude or OpenAI · step by step'}</button>
+            {s.apiKey && s.openaiKey && <label className="small">Use<select className="input" value={s.provider} onChange={e => set({ provider: e.target.value })}>{Object.entries(PROVIDERS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>}
+            <p className="small muted">Bring your own Anthropic (Claude) or OpenAI API key to power Copilot, surveys, hypotheses, gap and contradiction analysis, writing and the Reproduce Lab. Without a key the local engine is used. Keys are stored only in this browser and sent directly to the provider.</p>
+            <div className="row"><button className="btn" disabled={!hasAI(s) || testing} onClick={test}>{testing ? <span className="spinner" /> : 'Test connection'}</button></div>
             <label className="small">Semantic Scholar API key (optional — avoids shared rate limits for the citation graph)<input className="input mono" type="password" placeholder="free at semanticscholar.org/product/api" value={s.s2Key} onChange={e => set({ s2Key: e.target.value.trim() })} /></label>
             <div className="card flat small"><b>arXiv</b> and <b>Semantic Scholar</b> — reached via the app's proxy (dev server or <code>npm run server</code>). <b>Zotero</b> — connect from Import → Zotero.</div>
           </div>}

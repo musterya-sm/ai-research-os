@@ -35,7 +35,7 @@ export function printPdf(html) {
 
 // Workspace JSON for sharing: never include the API key. Optionally bundles uploaded PDFs as base64.
 export async function workspaceJson(state, { includePdfs = false } = {}) {
-  const { apiKey, zoteroKey, s2Key, ...settings } = state.settings
+  const { apiKey, openaiKey, zoteroKey, s2Key, ...settings } = state.settings
   const out = { ...state, settings }
   if (includePdfs) {
     const { getPdf } = await import('./pdfstore.js')

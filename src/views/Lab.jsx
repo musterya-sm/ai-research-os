@@ -5,6 +5,7 @@ import { useStore } from '../lib/store.jsx'
 import { download } from '../lib/exporter.js'
 import { copyShare, shareProject } from '../lib/share.js'
 import { KeyNudge } from '../components/KeySetup.jsx'
+import { hasAI } from '../lib/ai.js'
 import { search } from '../lib/nlp.js'
 import { generateCodebase, fixFiles, localCodebase, toNotebook, zip, checkCode, parseResults } from '../lib/autobuild.js'
 import { extractSpec, planForPaper, specForIdea, planForIdea, specPrompt, ideaPrompt, parseAI, scaffold, planMarkdown, delta, verdict, localMentor, mentorPrompt, normSpec, rid } from '../lib/reproduce.js'
@@ -282,7 +283,7 @@ function Mentor({ project, paper, save }) {
 
 function Build({ project, paper, save, setSpec }) {
   const { state } = useStore()
-  const live = !!state.settings.apiKey
+  const live = hasAI(state.settings)
   const b = project.build
   const [busy, setBusy] = useState(false)
   const [log, setLog] = useState([])

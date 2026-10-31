@@ -52,7 +52,7 @@ const initial = () => ({
     { id: uid(), who: 'Rahul', text: 'commented on MemGPT paper', at: Date.now() - 5 * 36e5 },
     { id: uid(), who: 'Arjun', text: 'created a new hypothesis', at: Date.now() - 864e5 },
   ],
-  settings: { name: 'Arjun', email: '', autoSummarize: true, autoCluster: true, gapAlerts: true, weeklyDigest: false, darkMode: false, defaultView: 'canvas', apiKey: '', model: 'claude-sonnet-5-5', notifyEmail: true, notifyApp: true, shareAnalytics: false, reminder: true, reminderTime: '09:00', readingGoal: '', keyNudgeHidden: false, zoteroUser: '', zoteroKey: '', s2Key: '' },
+  settings: { name: 'Arjun', email: '', autoSummarize: true, autoCluster: true, gapAlerts: true, weeklyDigest: false, darkMode: false, defaultView: 'canvas', apiKey: '', model: 'claude-sonnet-5-5', notifyEmail: true, notifyApp: true, shareAnalytics: false, reminder: true, reminderTime: '09:00', readingGoal: '', keyNudgeHidden: false, provider: 'anthropic', openaiKey: '', openaiModel: 'gpt-4.1-mini', zoteroUser: '', zoteroKey: '', s2Key: '' },
 })
 
 const str = v => (typeof v === 'string' ? v : '')
@@ -164,8 +164,8 @@ function reducer(s, a) {
     case 'settings': return { ...s, settings: { ...s.settings, ...a.patch } }
     case 'import': {
       // Imported files are untrusted: keep our own secrets and coerce fields to expected types.
-      const { apiKey, zoteroKey, s2Key, ...settings } = a.state.settings || {}
-      return { ...initial(), ...a.state, ...sanitizeDoc(a.state), settings: { ...initial().settings, ...settings, apiKey: s.settings.apiKey, zoteroKey: s.settings.zoteroKey, s2Key: s.settings.s2Key } }
+      const { apiKey, openaiKey, zoteroKey, s2Key, ...settings } = a.state.settings || {}
+      return { ...initial(), ...a.state, ...sanitizeDoc(a.state), settings: { ...initial().settings, ...settings, apiKey: s.settings.apiKey, openaiKey: s.settings.openaiKey, zoteroKey: s.settings.zoteroKey, s2Key: s.settings.s2Key } }
     }
     case 'reset': return initial()
     default: return s

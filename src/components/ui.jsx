@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Star, X } from 'lucide-react'
 import { useStore } from '../lib/store.jsx'
-import { askClaude, SYSTEM } from '../lib/ai.js'
+import { askClaude, SYSTEM, hasAI, aiName } from '../lib/ai.js'
 
 export const nav = path => { window.location.hash = path }
 export const ago = t => { const m = (Date.now() - t) / 6e4; return m < 60 ? `${Math.max(1, m | 0)}m ago` : m < 1440 ? `${(m / 60) | 0}h ago` : `${(m / 1440) | 0}d ago` }
@@ -57,8 +57,8 @@ export function PaperRow({ paper, right, onClick }) {
 
 export function AiBadge() {
   const { state } = useStore()
-  const on = !!state.settings.apiKey
-  return <button type="button" className={`ai-badge ${on ? 'on' : ''}`} style={{ cursor: 'pointer', lineHeight: 'normal' }} onClick={() => window.dispatchEvent(new Event('key:open'))} title={on ? 'Using Claude. Click to change the key' : 'Local engine. Click to add a Claude key'}>{on ? `CLAUDE · ${state.settings.model}` : 'LOCAL ENGINE · ADD KEY'}</button>
+  const on = hasAI(state.settings)
+  return <button type="button" className={`ai-badge ${on ? 'on' : ''}`} style={{ cursor: 'pointer', lineHeight: 'normal' }} onClick={() => window.dispatchEvent(new Event('key:open'))} title={on ? 'Using your AI key. Click to change it' : 'Local engine. Click to add a Claude or OpenAI key'}>{on ? aiName(state.settings) : 'LOCAL ENGINE · ADD KEY'}</button>
 }
 
 // Runs a Claude prompt when a key is configured, otherwise the local fallback.
@@ -76,7 +76,7 @@ export function useAI() {
       return await fallback()
     } finally { setBusy(false) }
   }
-  return { run, busy, error, live: !!state.settings.apiKey }
+  return { run, busy, error, live: hasAI(state.settings) }
 }
 
 let toastTimer
