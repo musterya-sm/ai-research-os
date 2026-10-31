@@ -1,8 +1,8 @@
-import { searchArxiv } from './arxiv.js'
+import { searchPapers } from './sources.js'
 import { queryVector, cosine } from './nlp.js'
 import { dayKey } from './store.jsx'
 
-// Topic alerts: once a day, ask arXiv for the newest papers on each followed topic and author,
+// Topic alerts: once a day, ask the chosen paper source(s) for the newest papers on each followed topic and author,
 // drop what's already in the library or was shown before, and rank the rest by closeness to the library.
 const PER_QUERY = 15, MAX_ITEMS = 40, MAX_AGE_DAYS = 30
 const wait = ms => new Promise(r => setTimeout(r, ms))
@@ -17,7 +17,7 @@ export function relevance(index, p) {
 
 export const due = alerts => (alerts.topics.length || alerts.authors.length) && dayKey(alerts.lastRun || 0) !== dayKey()
 
-export async function runAlerts({ alerts, papers, index }) {
+export async function runAlerts({ alerts, papers, index, source }) {
   const known = new Set([...papers.map(p => p.id), ...alerts.seen])
   const found = new Map()
   const queries = [...alerts.topics.map(t => ['all', t, `Topic “${t}”`]), ...alerts.authors.map(a => ['au', a, `New from ${a}`])]
@@ -25,7 +25,7 @@ export async function runAlerts({ alerts, papers, index }) {
   for (const [i, [field, q, why]] of queries.entries()) {
     if (i) await wait(1200) // arXiv asks for gentle request rates
     try {
-      for (const p of await searchArxiv(q, PER_QUERY, { field, phrase: true, newest: true })) {
+      for (const p of await searchPapers(q, PER_QUERY, { field, phrase: true, newest: true, source })) {
         if (known.has(p.id)) continue
         const age = p.published ? (Date.now() - Date.parse(p.published)) / 864e5 : 0
         if (age > MAX_AGE_DAYS) continue
@@ -34,7 +34,7 @@ export async function runAlerts({ alerts, papers, index }) {
       }
     } catch { failures++ }
   }
-  if (failures && failures === queries.length) throw new Error('arXiv is not reachable right now')
+  if (failures && failures === queries.length) throw new Error('The paper sources are not reachable right now')
   const fresh = [...found.values()].map(x => ({ ...x, score: relevance(index, x.paper) })).sort((a, b) => b.score - a.score)
   // New matches go on top; older unread ones stay below until dismissed.
   const items = [...fresh, ...alerts.items.filter(x => !found.has(x.paper.id))].slice(0, MAX_ITEMS)

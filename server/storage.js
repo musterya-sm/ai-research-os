@@ -14,6 +14,8 @@ export async function openStorage({ dir, url }) {
       kind: 'postgres',
       get: async k => (await pool.query('select value from kv where key = $1', [k])).rows[0]?.value ?? null,
       put: async (k, v) => { await pool.query('insert into kv (key, value) values ($1, $2) on conflict (key) do update set value = excluded.value, updated_at = now()', [k, v]) },
+      // Removes a key and everything stored under "key/".
+      del: async k => { await pool.query("delete from kv where key = $1 or key like $2 escape '\\'", [k, k.replace(/[\\%_]/g, m => '\\' + m) + '/%']) },
     }
   } else {
     const file = k => path.join(dir, `${k}.json`)
@@ -22,6 +24,7 @@ export async function openStorage({ dir, url }) {
       get: k => fs.readFile(file(k), 'utf8').catch(() => null),
       // Atomic: write a temp file, then rename over the original.
       put: async (k, v) => { const f = file(k); await fs.mkdir(path.dirname(f), { recursive: true }); const tmp = `${f}.${process.pid}.tmp`; await fs.writeFile(tmp, v); await fs.rename(tmp, f) },
+      del: async k => { await fs.rm(file(k), { force: true }); await fs.rm(path.join(dir, k), { recursive: true, force: true }) },
     }
   }
   // Writes are serialised so a slow older write can never land after a newer one.
@@ -32,5 +35,6 @@ export async function openStorage({ dir, url }) {
     getJson: async (k, d) => { const v = await backend.get(k); return v == null ? d : JSON.parse(v) },
     put: (k, v) => { const p = chain.then(() => backend.put(k, v)); chain = p.catch(() => {}); return p },
     putJson(k, v) { return this.put(k, JSON.stringify(v)) },
+    del: k => { const p = chain.then(() => backend.del(k)); chain = p.catch(() => {}); return p },
   }
 }

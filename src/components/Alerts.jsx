@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { paperUrl, sourceName } from '../lib/sources.js'
 import { Bell, RefreshCw, Plus, X, ExternalLink } from 'lucide-react'
 import { nav, toast, Tags } from './ui.jsx'
 import { useStore } from '../lib/store.jsx'
@@ -10,7 +11,7 @@ export function useCheckAlerts() {
   async function check(alerts = state.alerts) {
     setBusy(true)
     try {
-      const r = await runAlerts({ alerts, papers: state.papers, index })
+      const r = await runAlerts({ alerts, papers: state.papers, index, source: state.settings.paperSource })
       dispatch({ type: 'alerts', patch: { items: r.items, lastRun: r.lastRun, seen: r.seen } })
       return r.fresh
     } finally { setBusy(false) }
@@ -60,13 +61,13 @@ export function AlertsPanel() {
         <div key={x.paper.id} className="list-item" style={{ cursor: 'default' }}>
           <div className="grow">
             <div className="t">{x.paper.title}</div>
-            <div className="muted tiny mono">{x.paper.authors.join(' ')} · {x.paper.published ? new Date(x.paper.published).toLocaleDateString() : x.paper.year} · <a href={`https://arxiv.org/abs/${encodeURIComponent(x.paper.id)}`} target="_blank" rel="noreferrer">arXiv <ExternalLink size={10} /></a></div>
+            <div className="muted tiny mono">{x.paper.authors.join(' ')} · {x.paper.published ? new Date(x.paper.published).toLocaleDateString() : x.paper.year} · <a href={paperUrl(x.paper)} target="_blank" rel="noreferrer">{sourceName(x.paper)} <ExternalLink size={10} /></a></div>
             <div className="small" style={{ margin: '6px 0' }}>{x.paper.abstract.slice(0, 220)}…</div>
             <Tags tags={x.paper.tags} /><div className="tiny muted mono">↳ {x.why.join(' · ')} · {matchPct(x.score)}% like your library</div>
           </div>
           <span className="stack" style={{ gap: 6 }}><button className="btn sm violet" onClick={() => add(x)}>Add</button><button className="btn sm ghost" onClick={() => dismiss(x)}>Dismiss</button></span>
         </div>))}
-      {!a.items.length && <div className="empty">{a.topics.length || a.authors.length ? 'No new papers yet. Click “Check now” or come back tomorrow.' : 'Follow a topic or an author to get new arXiv papers here every day.'}</div>}
+      {!a.items.length && <div className="empty">{a.topics.length || a.authors.length ? 'No new papers yet. Click “Check now” or come back tomorrow.' : 'Follow a topic or an author to get their newest papers here every day.'}</div>}
     </div>
   )
 }

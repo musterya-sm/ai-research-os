@@ -58,7 +58,7 @@ const initial = () => ({
   readLog: {}, // pages read per day: { 'YYYY-MM-DD': n }
   members: [{ id: 'me', name: '', role: 'Owner', you: true }],
   activity: [],
-  settings: { name: '', email: '', autoSummarize: true, autoCluster: true, gapAlerts: true, weeklyDigest: false, darkMode: false, defaultView: 'canvas', apiKey: '', model: 'claude-sonnet-5-5', notifyEmail: true, notifyApp: true, shareAnalytics: false, reminder: true, reminderTime: '09:00', readingGoal: '', keyNudgeHidden: false, provider: 'anthropic', openaiKey: '', openaiModel: 'gpt-4.1-mini', zoteroUser: '', zoteroKey: '', s2Key: '' },
+  settings: { name: '', email: '', autoSummarize: true, autoCluster: true, gapAlerts: true, weeklyDigest: false, darkMode: false, defaultView: 'canvas', apiKey: '', model: 'claude-sonnet-5-5', notifyEmail: true, notifyApp: true, shareAnalytics: false, reminder: true, reminderTime: '09:00', readingGoal: '', keyNudgeHidden: false, provider: 'anthropic', openaiKey: '', openaiModel: 'gpt-4.1-mini', zoteroUser: '', zoteroKey: '', s2Key: '', paperSource: 'mix' },
 })
 
 const str = v => (typeof v === 'string' ? v : '')
@@ -222,6 +222,14 @@ export function StoreProvider({ children }) {
     try { localStorage.setItem(KEY, JSON.stringify(state)) } catch (e) { console.warn('Workspace not saved — browser storage full?', e) }
   }, [state])
   useEffect(() => { document.documentElement.dataset.theme = state.settings.darkMode ? 'dark' : 'light' }, [state.settings.darkMode])
+  // Papers saved from another tab (the "Save to library" bookmarklet window): add them here too, or this
+  // tab's next write to localStorage would drop them.
+  useEffect(() => {
+    if (!window.BroadcastChannel) return
+    const ch = new BroadcastChannel('ai-research-os')
+    ch.onmessage = e => e.data?.type === 'addPapers' && Array.isArray(e.data.papers) && dispatch({ type: 'addPapers', papers: sanitizeDoc({ papers: e.data.papers }).papers || [] })
+    return () => ch.close()
+  }, [])
   const index = useMemo(() => buildIndex(state.papers), [state.papers])
   const value = useMemo(() => ({ state, dispatch, index }), [state, index])
   return <Ctx.Provider value={value}><SyncBridge state={state} dispatch={dispatch} />{children}</Ctx.Provider>

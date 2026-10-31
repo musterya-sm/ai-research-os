@@ -1,12 +1,17 @@
-// Optional LLM integration: the user's own Anthropic or OpenAI key, called straight from the browser.
-// Every caller supplies a local fallback, so the app works without a key.
+// Optional LLM integration: the user's own Anthropic or OpenAI key, called straight from the browser,
+// or else the server's free daily allowance for signed-in users (settings.freeAI comes from /api/health).
+// Every caller supplies a local fallback, so the app works without either.
+import { getAuth, askFree } from './sync.js'
+
 export const PROVIDERS = { anthropic: 'Claude', openai: 'OpenAI' }
 export const activeKey = s => (s.provider === 'openai' ? s.openaiKey : s.apiKey) || ''
-export const hasAI = s => !!activeKey(s)
-export const aiName = s => (s.provider === 'openai' ? `OPENAI · ${s.openaiModel || 'gpt-4.1-mini'}` : `CLAUDE · ${s.model}`)
+export const usingFree = s => !activeKey(s) && !!s.freeAI && !!getAuth()?.token
+export const hasAI = s => !!activeKey(s) || usingFree(s)
+export const aiName = s => (!activeKey(s) && usingFree(s) ? `FREE AI · ${s.freeAI.daily}/DAY` : s.provider === 'openai' ? `OPENAI · ${s.openaiModel || 'gpt-4.1-mini'}` : `CLAUDE · ${s.model}`)
 
 export async function askClaude(settings, { system, prompt, maxTokens = 1200 }) {
   if (!hasAI(settings)) return null
+  if (!activeKey(settings)) return askFree({ system, prompt, maxTokens })
   if (settings.provider === 'openai') {
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',

@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import { Download, Plus, Upload } from 'lucide-react'
+import { Download, Plus, Upload, BookmarkPlus } from 'lucide-react'
 import { Modal, toast } from './ui.jsx'
 import { useStore } from '../lib/store.jsx'
-import { searchArxiv, parseBibtex, inferTags } from '../lib/arxiv.js'
+import { parseBibtex, inferTags } from '../lib/arxiv.js'
+import { searchPapers, lookupPaper, SOURCES, sourceName } from '../lib/sources.js'
+import { bookmarklet } from '../views/Save.jsx'
 import { ingestPdf } from '../lib/ingest.js'
 import { fetchZotero, parseCslJson, parseRis } from '../lib/zotero.js'
 import { nav } from './ui.jsx'
@@ -24,7 +26,13 @@ export default function ImportModal({ onClose, initialTab = 'pdf' }) {
 
   async function go(e) {
     e.preventDefault(); setBusy(true); setErr('')
-    try { setResults(await searchArxiv(q, 12)) } catch (x) { setErr(`${x.message}. Run the app with "npm run dev" so the arXiv proxy is available.`) } finally { setBusy(false) }
+    // A pasted link or DOI finds that one paper; anything else is a search.
+    const link = /^(https?:\/\/|10\.\d{4,9}\/)/.test(q.trim())
+    try {
+      const found = link ? [await lookupPaper(q.trim().startsWith('10.') ? { doi: q.trim() } : { url: q.trim() })].filter(Boolean) : await searchPapers(q, 12, { source: state.settings.paperSource })
+      setResults(found)
+      if (link && !found.length) setErr('No paper found at that link. Try its title or DOI instead.')
+    } catch (x) { setErr(`${x.message}. The paper search may be busy; try again in a minute or pick another source.`) } finally { setBusy(false) }
   }
   async function upload(files) {
     const list = [...files]
@@ -64,7 +72,7 @@ export default function ImportModal({ onClose, initialTab = 'pdf' }) {
 
   return (
     <Modal title="Import papers" onClose={onClose} wide>
-      <div className="tabs">{[['pdf', 'Upload PDFs'], ['arxiv', 'arXiv search / ID'], ['zotero', 'Zotero'], ['bibtex', 'BibTeX'], ['manual', 'Manual']].map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
+      <div className="tabs">{[['pdf', 'Upload PDFs'], ['arxiv', 'Search papers'], ['zotero', 'Zotero'], ['bibtex', 'BibTeX'], ['manual', 'Manual'], ['web', 'Save from any site']].map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
       {tab === 'pdf' && <>
         <label className="empty" style={{ display: 'block', cursor: 'pointer', borderColor: drag ? 'var(--violet)' : null, background: drag ? 'var(--soft)' : null }}
           onDragOver={e => { e.preventDefault(); setDrag(true) }} onDragLeave={() => setDrag(false)} onDrop={e => { e.preventDefault(); setDrag(false); upload(e.dataTransfer.files) }}>
@@ -83,7 +91,8 @@ export default function ImportModal({ onClose, initialTab = 'pdf' }) {
       </>}
       {tab === 'arxiv' && <>
         <form className="row" onSubmit={go}>
-          <input className="input" autoFocus placeholder="e.g. agent memory  ·  or an arXiv ID like 2310.08560" value={q} onChange={e => setQ(e.target.value)} />
+          <input className="input" autoFocus placeholder="Topic, title, arXiv ID, DOI or a paper's link" value={q} onChange={e => setQ(e.target.value)} />
+          <select className="input" style={{ width: 'auto' }} aria-label="Source" value={state.settings.paperSource} onChange={e => dispatch({ type: 'settings', patch: { paperSource: e.target.value } })}>{Object.entries(SOURCES).map(([k, l]) => <option key={k} value={k}>{l.split(' (')[0]}</option>)}</select>
           <button className="btn violet" disabled={busy || !q.trim()}>{busy ? <span className="spinner" /> : 'Search'}</button>
         </form>
         {err && <p className="small" style={{ color: 'var(--red)' }}>{err}</p>}
@@ -91,12 +100,25 @@ export default function ImportModal({ onClose, initialTab = 'pdf' }) {
         <div className="stack">
           {results.map(p => (
             <div key={p.id} className="list-item" style={{ cursor: 'default' }}>
-              <div className="grow"><div className="t">{p.title}</div><div className="muted tiny mono">{p.authors.join(', ')} · {p.year} · {p.arxiv}</div><div className="small muted" style={{ marginTop: 4 }}>{p.abstract.slice(0, 220)}…</div></div>
+              <div className="grow"><div className="t">{p.title}</div><div className="muted tiny mono">{p.authors.join(', ')} · {p.year} · {p.venue !== 'arXiv' && p.venue ? `${p.venue} · ` : ''}{sourceName(p) === 'arXiv' ? p.arxiv : sourceName(p)}{p.citations ? ` · ${p.citations} citations` : ''}</div><div className="small muted" style={{ marginTop: 4 }}>{p.abstract.slice(0, 220)}…</div></div>
               {have.has(p.id) ? <span className="tag">IN LIBRARY</span> : <button className="btn sm" onClick={() => add([p])}><Download size={13} /> Add</button>}
             </div>
           ))}
         </div>
       </>}
+      {tab === 'web' && <div className="stack small">
+        <p style={{ margin: 0 }}>Add papers while you browse, from arXiv, journals, PubMed, Google Scholar results or any page with a DOI, in one click.</p>
+        <div className="row wrap" style={{ alignItems: 'center' }}>
+          <a className="btn violet" data-testid="bookmarklet" ref={el => el && el.setAttribute('href', bookmarklet(location.origin + location.pathname.replace(/\/$/, '')))} onClick={e => { e.preventDefault(); toast('Drag this button to your bookmarks bar — clicking it here does nothing') }}><BookmarkPlus size={14} /> Save to AI Research OS</a>
+          <span className="muted">← drag this to your bookmarks bar</span>
+        </div>
+        <ol style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
+          <li>Show the bookmarks bar: <span className="mono">Ctrl/⌘ + Shift + B</span> in Chrome, Edge or Brave (Firefox: View → Toolbars).</li>
+          <li>Drag the purple button onto it.</li>
+          <li>On any paper's page, click the bookmark. A small window shows the paper; click <b>Save to library</b>. It lands in your To-read list.</li>
+        </ol>
+        <span className="muted tiny">It reads only the page address, title and DOI, and opens this app; nothing else leaves the page. On a phone, use the share button → copy link, then paste it into Search papers.</span>
+      </div>}
       {tab === 'zotero' && <div className="stack">
         <p className="small muted" style={{ margin: 0 }}>Connect your Zotero library: find your <b>user ID</b> and create a read-only <b>API key</b> at <a href="https://www.zotero.org/settings/keys" target="_blank" rel="noreferrer">zotero.org/settings/keys</a>. Collections come across too. The key stays in this browser.</p>
         <div className="row wrap">

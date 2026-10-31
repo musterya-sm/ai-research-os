@@ -3,10 +3,11 @@ import { Home, HelpCircle, NotebookPen, PenLine, LayoutDashboard, Library, Netwo
 import { nav, toast } from './components/ui.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import Shared from './views/Shared.jsx'
+import Save from './views/Save.jsx'
 import Reading from './views/Reading.jsx'
 import Account, { Avatar } from './views/Account.jsx'
 import PublicProfile from './views/PublicProfile.jsx'
-import { useSync, getAuth } from './lib/sync.js'
+import { useSync, getAuth, serverInfo } from './lib/sync.js'
 import { KeySetupModal } from './components/KeySetup.jsx'
 import { useCheckAlerts } from './components/Alerts.jsx'
 import { due } from './lib/alerts.js'
@@ -63,7 +64,7 @@ export const ROUTES = [
 const GROUPS = { 0: 'Workspace', 3: 'Analyse', 9: 'AI & team', 14: 'Notes & build', 18: 'Settings' }
 const NUMS = { dashboard: 1, library: 2, canvas: 3, search: 5, survey: 6, gaps: 7, hypotheses: 8, contradictions: 9, timeline: 10, copilot: 11, export: 12, workflows: 13, clusters: 14, feed: 15, notes: 17, write: 18, lab: 19, reading: 20, settings: 16 }
 
-const parse = () => (window.location.hash.replace(/^#\/?/, '') || 'home').split('/')
+const parse = () => (window.location.hash.replace(/^#\/?/, '').replace(/\?.*$/, '') || 'home').split('/')
 
 export default function App() {
   const [route, setRoute] = useState(parse)
@@ -96,18 +97,23 @@ export default function App() {
     return () => { clearTimeout(first); clearInterval(every) }
   }, [al.topics.join('|'), al.authors.join('|'), al.lastRun])
 
+  // Whether this server offers the free daily AI allowance (needs FREE_AI_KEY on the server).
+  useEffect(() => { serverInfo().then(h => dispatch({ type: 'settings', patch: { freeAI: h.freeAI || null } }), () => {}) }, [])
+
   useSync()
   const me = getAuth()?.user
   const wide = state.settings.railWide !== false // expanded unless the user collapsed it
   const [name, arg, sub] = route
-  const View = name === 'home' ? Landing : name === 'paper' ? PaperView : name === 'join' ? Join : name === 'account' ? Account : name === 'u' ? PublicProfile : ROUTES.find(r => r[0] === name)?.[3] || Dashboard
+  const View = name === 'home' ? Landing : name === 'paper' ? PaperView : name === 'join' ? Join : name === 'account' || name === 'reset' ? Account : name === 'u' ? PublicProfile : ROUTES.find(r => r[0] === name)?.[3] || Dashboard
 
   // Share links open as a standalone read-only page, without the rail or the tour.
   if (name === 's') return <ErrorBoundary><Shared data={arg} /></ErrorBoundary>
+  if (name === 'save') return <ErrorBoundary><Save /></ErrorBoundary>
 
   return (
     <div className={`app ${wide ? 'wide' : ''}`}>
-      <nav className="rail" aria-label="Main">
+      {/* On phones the rail is a scrolling bottom bar: the right edge fades until the end is reached. */}
+      <nav className="rail" aria-label="Main" onScroll={e => { const r = e.currentTarget; r.classList.toggle('end', r.scrollLeft + r.clientWidth >= r.scrollWidth - 4) }}>
         <div className="rail-top">
           <div className="logo" onClick={() => nav('/')}>RO{wide && <span className="lbl"> Research OS</span>}</div>
           <button className="rail-toggle" title={wide ? 'Collapse sidebar' : 'Expand sidebar'} aria-label={wide ? 'Collapse sidebar' : 'Expand sidebar'} aria-expanded={wide} onClick={() => dispatch({ type: 'settings', patch: { railWide: !wide } })}>{wide ? <PanelLeftClose size={17} /> : <PanelLeftOpen size={17} />}</button>

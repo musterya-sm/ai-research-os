@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { KeyRound, ExternalLink, Check, X, ShieldCheck } from 'lucide-react'
-import { Modal, toast } from './ui.jsx'
+import { Modal, toast, nav } from './ui.jsx'
 import { useStore } from '../lib/store.jsx'
-import { askClaude, hasAI, PROVIDERS } from '../lib/ai.js'
+import { askClaude, hasAI, activeKey, PROVIDERS } from '../lib/ai.js'
+import { getAuth } from '../lib/sync.js'
 
 export const openKeySetup = () => window.dispatchEvent(new Event('key:open'))
 
@@ -71,7 +72,7 @@ export function KeySetupModal() {
   return (
     <Modal title="Connect an AI model" onClose={() => setOpen(false)}>
       <div className="stack">
-        <div className="seg" role="tablist">{Object.entries(INFO).map(([p, x]) => <button key={p} role="tab" aria-selected={provider === p} className={provider === p ? 'on' : ''} onClick={() => pick(p)}>{x.name}{st.provider === p && hasAI(st) ? ' ✓' : ''}</button>)}</div>
+        <div className="seg" role="tablist">{Object.entries(INFO).map(([p, x]) => <button key={p} role="tab" aria-selected={provider === p} className={provider === p ? 'on' : ''} onClick={() => pick(p)}>{x.name}{st.provider === p && activeKey(st) ? ' ✓' : ''}</button>)}</div>
         {st[info.field] && status !== 'ok' && <div className="tag lime" style={{ alignSelf: 'flex-start' }}><Check size={12} /> A {PROVIDERS[provider]} key is saved{st.provider === provider ? ' and in use' : ''}. Paste a new one to replace it.</div>}
         <div>
           <div className="label">What you get</div>
@@ -111,11 +112,13 @@ export function KeySetupModal() {
 export function KeyNudge({ what }) {
   const { state, dispatch } = useStore()
   if (hasAI(state.settings) || state.settings.keyNudgeHidden) return null
+  const free = !getAuth()?.token && state.settings.freeAI
   return (
     <div className="card flat row between" style={{ marginBottom: 14, background: 'var(--lime)', color: '#0d0d0d', padding: '10px 14px' }} data-tour="key-nudge">
-      <span className="small"><KeyRound size={14} /> <b>Running on the local engine.</b> {what} Add your own Claude or OpenAI key to switch it on.</span>
+      <span className="small"><KeyRound size={14} /> <b>Running on the local engine.</b> {what} {free ? `Sign in for ${free.daily} free AI requests a day, or add your own Claude or OpenAI key.` : 'Add your own Claude or OpenAI key to switch it on.'}</span>
       <span className="row" style={{ gap: 6 }}>
-        <button className="btn sm dark" onClick={openKeySetup}>Add key · 2 min</button>
+        {free && <button className="btn sm dark" onClick={() => nav('/account')}>Sign in · free AI</button>}
+        <button className={`btn sm ${free ? '' : 'dark'}`} onClick={openKeySetup}>Add key · 2 min</button>
         <button className="star" title="Don't show again" aria-label="Dismiss" onClick={() => dispatch({ type: 'settings', patch: { keyNudgeHidden: true } })}><X size={14} /></button>
       </span>
     </div>

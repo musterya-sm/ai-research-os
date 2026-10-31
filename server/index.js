@@ -9,6 +9,7 @@ import { existsSync, createReadStream } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { openStorage } from './storage.js'
+import { freeAiInfo, freeAsk, usedToday } from './freeai.js'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const PORT = Number(process.env.PORT) || 5190
@@ -21,6 +22,7 @@ const store = await openStorage({ dir: DATA, url: process.env.DATABASE_URL })
 
 // ---- tiny JSON "database" ---------------------------------------------------------------
 const db = await store.getJson('db', { users: {}, sessions: {}, workspaces: {} })
+db.resets ||= {} // sha(email reset token) -> { userId, exp }
 // Membership is keyed by user id. Older files keyed it by email: keep only members whose account exists.
 for (const ws of Object.values(db.workspaces)) {
   ws.members = ws.members.map(m => m.userId ? m : { userId: Object.values(db.users).find(u => u.email === m.email)?.id, role: m.role }).filter(m => m.userId)
@@ -47,7 +49,28 @@ const cleanProfile = (p = {}, old = {}) => ({
   avatar: AVATARS.includes(p.avatar) ? p.avatar : old.avatar || AVATARS[0],
   public: typeof p.public === 'boolean' ? p.public : !!old.public,
 })
-const pubUser = u => ({ id: u.id, username: u.username, email: u.email || '', name: u.name, profile: cleanProfile(u.profile), createdAt: u.createdAt })
+const pubUser = u => ({ id: u.id, username: u.username, email: u.email || '', name: u.name, profile: cleanProfile(u.profile), createdAt: u.createdAt, hasRecovery: !!u.recovery, aiUsed: usedToday(u) })
+// Recovery codes reset a password without email. Shown once; only a hash is stored.
+const normCode = c => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+const newRecovery = u => { const c = Array.from({ length: 4 }, () => crypto.randomBytes(3).toString('hex').toUpperCase().slice(0, 4)).join('-'); u.recovery = sha(normCode(c)); return c }
+const pwOk = (u, pw) => crypto.timingSafeEqual(Buffer.from(hashPw(String(pw || ''), u.salt), 'hex'), Buffer.from(u.hash, 'hex'))
+const setPassword = (u, pw) => {
+  if (String(pw).length < 8) fail(400, 'Password must be at least 8 characters')
+  if (String(pw).toLowerCase().includes(u.username)) fail(400, 'Password must not contain your username')
+  u.salt = newId(16); u.hash = hashPw(String(pw), u.salt)
+}
+const dropSessions = (userId, except) => { for (const [k, v] of Object.entries(db.sessions)) if (v.userId === userId && k !== except) delete db.sessions[k] }
+const startSession = u => { const token = newId(32); db.sessions[sha(token)] = { userId: u.id, at: Date.now() }; return token }
+// Email resets need a Resend key; links point at APP_URL (Render sets RENDER_EXTERNAL_URL), never the request's Host header.
+const APP_URL = (process.env.APP_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 5190}`).replace(/\/$/, '')
+const MAIL = process.env.RESEND_API_KEY
+async function sendResetMail(u, token) {
+  const link = `${APP_URL}/#/reset/${token}`
+  const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${MAIL}` },
+    body: JSON.stringify({ from: process.env.MAIL_FROM || 'AI Research OS <onboarding@resend.dev>', to: [u.email], subject: 'Reset your AI Research OS password',
+      html: `<p>Hi ${u.name.replace(/[<>&"]/g, '')},</p><p>Someone (hopefully you) asked to reset the password for <b>@${u.username}</b>. This link works for 1 hour:</p><p><a href="${link}">${link}</a></p><p>If it wasn't you, ignore this email; your password stays the same.</p>` }) })
+  if (!r.ok) console.error('reset mail', r.status, (await r.text()).slice(0, 200))
+}
 const SESSION_TTL = 90 * 864e5
 // Older accounts were email-only: give each a username derived from its email.
 for (const u of Object.values(db.users)) { if (!u.username) u.username = freeUsername((u.email || 'user').split('@')[0]); u.profile = cleanProfile(u.profile) }
@@ -127,7 +150,7 @@ async function api(req, res, url) {
     throttle(req)
     const b = await readJson(req, 10_000)
     const pw = String(b.password || '')
-    let user
+    let user, recoveryCode
     if (parts[1] === 'signup') {
       const username = String(b.username || '').trim().toLowerCase(), email = String(b.email || '').trim().toLowerCase()
       if (!USERNAME.test(username)) fail(400, 'Username: 3–24 characters, letters, numbers, dot, dash or underscore')
@@ -139,21 +162,50 @@ async function api(req, res, url) {
       const salt = newId(16)
       user = { id: newId(), username, email, name: String(b.name || username).trim().slice(0, 80) || username, salt, hash: hashPw(pw, salt), createdAt: Date.now(), profile: cleanProfile() }
       db.users[user.id] = user
+      recoveryCode = newRecovery(user)
     } else if (parts[1] === 'login') {
       // Sign in with a username or an email address.
       const id = String(b.login ?? b.username ?? b.email ?? '').trim().toLowerCase()
       user = id.includes('@') ? userByEmail(id) : userByName(id)
       const ok = user && crypto.timingSafeEqual(Buffer.from(hashPw(pw, user.salt), 'hex'), Buffer.from(user.hash, 'hex'))
       if (!ok) fail(401, 'Wrong username or password')
+    } else if (parts[1] === 'forgot') {
+      // Same answer whether or not the account exists, so this can't be used to probe for users.
+      const id = String(b.login || '').trim().toLowerCase()
+      const u = id.includes('@') ? userByEmail(id) : userByName(id)
+      if (MAIL && u?.email) {
+        const token = newId(24)
+        for (const [k, r] of Object.entries(db.resets)) if (r.exp < Date.now() || r.userId === u.id) delete db.resets[k]
+        db.resets[sha(token)] = { userId: u.id, exp: Date.now() + 36e5 }
+        await saveDb()
+        await sendResetMail(u, token)
+      }
+      return send(res, 200, { ok: true, email: !!MAIL })
+    } else if (parts[1] === 'reset') {
+      // Either an emailed link token, or username + recovery code.
+      if (b.token) {
+        const k = sha(String(b.token)), r = db.resets[k]
+        user = r && r.exp > Date.now() && db.users[r.userId]
+        if (!user) fail(400, 'This reset link is invalid or has expired. Ask for a new one.')
+        setPassword(user, pw) // before spending the link, so a too-short password can be retried
+        delete db.resets[k]
+      } else {
+        const id = String(b.login || '').trim().toLowerCase()
+        user = id.includes('@') ? userByEmail(id) : userByName(id)
+        const code = sha(normCode(b.code))
+        if (!user?.recovery || !crypto.timingSafeEqual(Buffer.from(code), Buffer.from(user.recovery))) fail(401, 'That username and recovery code don’t match')
+      }
+      if (!b.token) setPassword(user, pw)
+      dropSessions(user.id)
+      recoveryCode = newRecovery(user) // the old code is spent
     } else fail(404, 'Not found')
-    const token = newId(32)
-    db.sessions[sha(token)] = { userId: user.id, at: Date.now() }
+    const token = startSession(user)
     await saveDb()
-    return send(res, 200, { token, user: pubUser(user) })
+    return send(res, 200, { token, user: pubUser(user), ...(recoveryCode ? { recoveryCode } : {}) })
   }
 
   // Lets the app warn when accounts live on a throwaway disk.
-  if (parts[0] === 'health' && M === 'GET') return send(res, 200, { ok: true, storage: store.kind })
+  if (parts[0] === 'health' && M === 'GET') return send(res, 200, { ok: true, storage: store.kind, freeAI: freeAiInfo(), emailReset: !!MAIL })
 
   // Public profile pages: only for users who switched "public profile" on.
   if (parts[0] === 'users' && parts[1] && M === 'GET') {
@@ -213,16 +265,50 @@ async function api(req, res, url) {
   if (parts[0] === 'me' && parts[1] === 'password' && M === 'POST') {
     throttle(req)
     const b = await readJson(req, 10_000)
-    const ok = crypto.timingSafeEqual(Buffer.from(hashPw(String(b.current || ''), user.salt), 'hex'), Buffer.from(user.hash, 'hex'))
-    if (!ok) fail(401, 'Current password is wrong')
-    const next = String(b.next || '')
-    if (next.length < 8) fail(400, 'New password must be at least 8 characters')
-    user.salt = newId(16); user.hash = hashPw(next, user.salt)
+    if (!pwOk(user, b.current)) fail(401, 'Current password is wrong')
+    setPassword(user, String(b.next || ''))
     // Sign out every other device.
-    const mine = sha((req.headers.authorization || '').replace(/^Bearer /, ''))
-    for (const [k, v] of Object.entries(db.sessions)) if (v.userId === user.id && k !== mine) delete db.sessions[k]
+    dropSessions(user.id, sha((req.headers.authorization || '').replace(/^Bearer /, '')))
     await saveDb()
     return send(res, 200, { ok: true })
+  }
+  if (parts[0] === 'me' && parts[1] === 'recovery' && M === 'POST') {
+    throttle(req)
+    const b = await readJson(req, 10_000)
+    if (!pwOk(user, b.password)) fail(401, 'Password is wrong')
+    const recoveryCode = newRecovery(user)
+    await saveDb()
+    return send(res, 200, { recoveryCode, user: pubUser(user) })
+  }
+  // Everything the server holds about you: account details and the workspaces you own.
+  if (parts[0] === 'me' && parts[1] === 'export' && M === 'GET') {
+    const { salt, hash, recovery, ...account } = user
+    const owned = Object.values(db.workspaces).filter(w => w.owner === user.id)
+    const workspaces = await Promise.all(owned.map(async w => ({ id: w.id, name: w.name, updatedAt: w.updatedAt, doc: await readDoc(w.id), pdfs: await store.getJson(`pdf/${w.id}/index`, []) })))
+    const sharedWithMe = Object.values(db.workspaces).filter(w => w.owner !== user.id && w.members.some(m => m.userId === user.id)).map(w => ({ id: w.id, name: w.name }))
+    return send(res, 200, { exportedAt: new Date().toISOString(), account, workspaces, sharedWithMe }, { 'content-disposition': `attachment; filename="ai-research-os-${user.username}.json"` })
+  }
+  if (parts[0] === 'me' && !parts[1] && M === 'DELETE') {
+    throttle(req)
+    const b = await readJson(req, 10_000)
+    if (!pwOk(user, b.password)) fail(401, 'Password is wrong')
+    for (const w of Object.values(db.workspaces)) {
+      if (w.owner === user.id) {
+        for (const r of streams.get(w.id) || []) r.end()
+        await store.del(wsKey(w.id)); await store.del(`pdf/${w.id}`)
+        delete db.workspaces[w.id]
+      } else w.members = w.members.filter(m => m.userId !== user.id)
+    }
+    dropSessions(user.id)
+    for (const [k, r] of Object.entries(db.resets)) if (r.userId === user.id) delete db.resets[k]
+    delete db.users[user.id]
+    await saveDb()
+    return send(res, 204)
+  }
+  if (parts[0] === 'ai' && M === 'POST') {
+    const out = await freeAsk(user, await readJson(req, 200_000), fail)
+    await saveDb()
+    return send(res, 200, out)
   }
 
   if (parts[0] === 'invites' && parts[2] === 'accept' && M === 'POST') {

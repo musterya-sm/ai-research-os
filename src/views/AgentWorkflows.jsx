@@ -3,7 +3,7 @@ import { Play, Download } from 'lucide-react'
 import { Head, Prose, AiBadge, useAI, nav } from '../components/ui.jsx'
 import { useStore } from '../lib/store.jsx'
 import { search, summarize, detectGaps, coverage } from '../lib/nlp.js'
-import { searchArxiv } from '../lib/arxiv.js'
+import { searchPapers } from '../lib/sources.js'
 import { paperContext } from '../lib/ai.js'
 import { localNarrative } from './LiteratureSurvey.jsx'
 import { download } from '../lib/exporter.js'
@@ -30,7 +30,7 @@ export default function AgentWorkflows() {
     let papers = search(index, q, 10).map(r => r.paper)
     say(1, `Found ${papers.length} relevant papers in library.`)
     if (useArxiv) {
-      try { const fresh = (await searchArxiv(q, 6)).filter(p => !state.papers.some(x => x.id === p.id)); dispatch({ type: 'addPapers', papers: fresh }); papers = [...papers, ...fresh]; say(1, `Imported ${fresh.length} new papers from arXiv.`) } catch (e) { say(1, `arXiv skipped: ${e.message}`) }
+      try { const fresh = (await searchPapers(q, 6, { source: state.settings.paperSource })).filter(p => !state.papers.some(x => x.id === p.id)); dispatch({ type: 'addPapers', papers: fresh }); papers = [...papers, ...fresh]; say(1, `Imported ${fresh.length} new papers from arXiv.`) } catch (e) { say(1, `arXiv skipped: ${e.message}`) }
     }
     await pause()
 

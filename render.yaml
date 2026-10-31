@@ -14,3 +14,13 @@ services:
       # throwaway disk and are wiped on every redeploy.
       - key: DATABASE_URL
         sync: false
+      # Free AI for signed-in users without their own key. A free Gemini key: https://aistudio.google.com/apikey
+      - key: FREE_AI_KEY
+        sync: false
+      - key: FREE_AI_PROVIDER
+        value: gemini
+      - key: FREE_AI_DAILY
+        value: "25"
+      # Optional: password-reset emails through https://resend.com (free tier).
+      - key: RESEND_API_KEY
+        sync: false

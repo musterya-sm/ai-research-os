@@ -38,11 +38,13 @@ async function api(path, { method = 'GET', body, server = auth?.server, token = 
 }
 
 // ---- account -----------------------------------------------------------------------------
-// mode 'signup' takes { username, password, name, email? }; 'login' takes { login (username or email), password }.
+// mode 'signup' takes { username, password, name, email? }; 'login' takes { login (username or email), password };
+// 'reset' takes { token, password } or { login, code, password }.
 export async function signIn(mode, { server = '', ...body }) {
   const { data } = await api(`/auth/${mode}`, { method: 'POST', body, server, token: null })
   setAuth({ server, token: data.token, user: data.user, workspace: null })
-  return data.user
+  // New accounts and password resets come with a fresh recovery code to show once.
+  return data.recoveryCode ? { ...data.user, recoveryCode: data.recoveryCode } : data.user
 }
 // Puts this browser on the account's own workspace: a new account uploads what's here; signing in on
 // another device merges this browser's items into the account's most recently used workspace.
@@ -58,6 +60,22 @@ export async function updateProfile(patch) {
   return data.user
 }
 export const changePassword = (current, next) => api('/me/password', { method: 'POST', body: { current, next } })
+// Password recovery: an emailed link (when the server can send mail) or username + recovery code.
+export const forgotPassword = async login => (await api('/auth/forgot', { method: 'POST', body: { login }, server: auth?.server || '', token: null })).data
+export const newRecoveryCode = async password => { const { data } = await api('/me/recovery', { method: 'POST', body: { password } }); setAuth({ ...auth, user: data.user }); return data.recoveryCode }
+export const exportAccount = async () => (await api('/me/export')).data
+export async function deleteAccount(password) {
+  await api('/me', { method: 'DELETE', body: { password } })
+  stopLive(); setAuth(null); setBase(null); emit({ state: 'off', members: [] })
+}
+export const serverInfo = async () => (await api('/health', { token: null })).data
+// The server's free AI allowance (signed-in users only). Remaining requests are published on the sync status.
+export async function askFree(body) {
+  const { data } = await api('/ai', { method: 'POST', body })
+  emit({ aiLeft: data.left })
+  if (auth?.user) setAuth({ ...auth, user: { ...auth.user, aiUsed: (auth.user.aiUsed || 0) + 1 } })
+  return data.text
+}
 export async function refreshMe() {
   if (!auth?.token) return null
   const { data } = await api('/me')

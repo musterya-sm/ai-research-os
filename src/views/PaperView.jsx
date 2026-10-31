@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { paperUrl, sourceName } from '../lib/sources.js'
 import { Star, Trash2, Sparkles, FolderPlus, Paperclip, Pencil, FlaskConical } from 'lucide-react'
 import PdfViewer, { PdfThumbs } from '../components/PdfViewer.jsx'
 import { ingestPdf } from '../lib/ingest.js'
@@ -98,7 +99,7 @@ export default function PaperView({ arg, sub }) {
               <div>Venue: {p.venue}</div><div>Year: {p.year}</div><div>Citations: {p.citations || '—'}</div>
               {p.hasPdf
                 ? <div>PDF: <a href="#" onClick={e => { e.preventDefault(); setTab('pdf') }}>[{p.pdfName}]</a> <a href="#" onClick={e => { e.preventDefault(); removePdf() }}>[Remove]</a></div>
-                : <div>PDF: {!/^(pdf-|local-)/.test(p.arxiv) && <><a href={`https://arxiv.org/abs/${p.arxiv}`} target="_blank" rel="noreferrer">[arXiv]</a> </>}<a href="#" onClick={e => { e.preventDefault(); fileRef.current.click() }}>{attaching ? 'uploading…' : '[Attach your PDF]'}</a></div>}
+                : <div>PDF: {paperUrl(p) && <><a href={paperUrl(p)} target="_blank" rel="noreferrer">[{sourceName(p)}]</a> </>}<a href="#" onClick={e => { e.preventDefault(); fileRef.current.click() }}>{attaching ? 'uploading…' : '[Attach your PDF]'}</a></div>}
               <input ref={fileRef} type="file" accept="application/pdf,.pdf" hidden onChange={e => { attach(e.target.files[0]); e.target.value = '' }} />
               <div style={{ marginTop: 8 }}>In: {inColls.length ? inColls.map(c => <span key={c.id} className="tag lime">{c.name}</span>) : <span className="muted">no collections</span>}</div>
               <form className="row" style={{ marginTop: 8 }} onSubmit={e => { e.preventDefault(); if (tagText.trim()) { dispatch({ type: 'updatePaper', id: p.id, patch: { tags: [...new Set([...p.tags, tagText.trim()])] } }); setTagText('') } }}>

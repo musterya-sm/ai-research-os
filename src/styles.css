@@ -166,6 +166,7 @@ a.wikilink { color: var(--violet); text-decoration: none; border-bottom: 1.5px s
   .app { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
   main { padding: 14px 14px 24px; grid-row: 1; }
   .rail { grid-row: 2; flex-direction: row; overflow-x: auto; overflow-y: hidden; padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); gap: 4px; }
+  .rail:not(.end) { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent); }
   .rail .logo { margin: 0 8px 0 4px; }
   .rail .sep { width: 1px; height: 24px; margin: 0 2px; }
   .rail button .tip { display: none; }

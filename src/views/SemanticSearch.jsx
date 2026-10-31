@@ -3,7 +3,7 @@ import { Search, Globe, Download } from 'lucide-react'
 import { Head, PaperRow, nav, toast } from '../components/ui.jsx'
 import { useStore } from '../lib/store.jsx'
 import { search } from '../lib/nlp.js'
-import { searchArxiv } from '../lib/arxiv.js'
+import { searchPapers } from '../lib/sources.js'
 import { searchHighlights, KINDS } from '../lib/highlights.js'
 
 const EXAMPLES = ['memory management in llm agents', 'retrieval vs long context', 'agents that learn tools', 'self-correction reasoning']
@@ -25,7 +25,7 @@ export default function SemanticSearch({ arg }) {
   const go = text => { setQ(text); setSubmitted(text); setWeb(null); nav(`/search/${encodeURIComponent(text)}`) }
   async function searchWeb() {
     setBusy(true)
-    try { setWeb(await searchArxiv(submitted, 10)) } catch (e) { toast(`arXiv unavailable: ${e.message}`) } finally { setBusy(false) }
+    try { setWeb(await searchPapers(submitted, 10, { source: state.settings.paperSource })) } catch (e) { toast(`Paper search unavailable: ${e.message}`) } finally { setBusy(false) }
   }
 
   return (

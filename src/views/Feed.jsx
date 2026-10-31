@@ -3,7 +3,7 @@ import { RefreshCw } from 'lucide-react'
 import { Head, Tags, nav, toast } from '../components/ui.jsx'
 import { useStore } from '../lib/store.jsx'
 import { cosine, topTerms } from '../lib/nlp.js'
-import { searchArxiv } from '../lib/arxiv.js'
+import { searchPapers } from '../lib/sources.js'
 import { AlertsPanel } from '../components/Alerts.jsx'
 
 export default function Feed({ arg }) {
@@ -28,7 +28,7 @@ export default function Feed({ arg }) {
   async function fetchNew() {
     setBusy(true)
     try {
-      const fresh = (await searchArxiv(interests.join(' '), 10)).filter(p => !state.papers.some(x => x.id === p.id))
+      const fresh = (await searchPapers(interests.join(' '), 10, { source: state.settings.paperSource })).filter(p => !state.papers.some(x => x.id === p.id))
       dispatch({ type: 'addPapers', papers: fresh }); toast(`${fresh.length} new papers from arXiv`); setTab('recent')
     } catch (e) { toast(`arXiv unavailable: ${e.message}`) } finally { setBusy(false) }
   }

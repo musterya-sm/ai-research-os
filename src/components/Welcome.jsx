@@ -4,7 +4,7 @@ import { toast, nav } from './ui.jsx'
 import ImportModal from './ImportModal.jsx'
 import { useStore, samplePapers } from '../lib/store.jsx'
 import { startGuide } from './Tour.jsx'
-import { searchArxiv } from '../lib/arxiv.js'
+import { searchPapers, SOURCES } from '../lib/sources.js'
 
 const TOPICS = ['LLM Agents', 'Retrieval-Augmented Generation', 'Memory for LLMs', 'Reasoning', 'Tool Use', 'Long Context', 'Multi-Agent Systems', 'Evaluation & Benchmarks', 'Diffusion Models', 'Computer Vision', 'Reinforcement Learning', 'Graph Neural Networks', 'Speech', 'Robotics', 'AI Safety', 'Efficient Inference']
 const PER_TOPIC = 6
@@ -41,7 +41,7 @@ export function Welcome() {
       setBusy(`Finding papers on “${t}” (${i + 1}/${picked.length})…`)
       if (i) await wait(1200) // arXiv asks for gentle request rates
       try {
-        const ps = await searchArxiv(t, PER_TOPIC)
+        const ps = await searchPapers(t, PER_TOPIC, { source: state.settings.paperSource })
         dispatch({ type: 'addPapers', papers: ps })
         if (ps.length) dispatch({ type: 'upsertCollections', collections: [{ name: t, paperIds: ps.map(p => p.id) }] })
         added += ps.length
@@ -52,7 +52,7 @@ export function Welcome() {
     setBusy('')
     dispatch({ type: 'settings', patch: { setupBusy: false } })
     if (added) toast(`Added ${added} papers in ${picked.length} collection${picked.length > 1 ? 's' : ''}. New ones arrive daily in Topic alerts.`)
-    else toast(failed ? 'arXiv is busy right now. Try again in a minute, upload PDFs, or load the sample library.' : 'No papers found for those topics. Try broader ones.')
+    else toast(failed ? 'The paper search is busy right now. Try again in a minute, upload PDFs, or load the sample library.' : 'No papers found for those topics. Try broader ones.')
   }
 
   return (
@@ -69,6 +69,9 @@ export function Welcome() {
       </div>
       <div className="row" style={{ maxWidth: 420 }}><input className="input" placeholder="Or type your own topic" value={custom} onChange={e => setCustom(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustom() } }} /><button className="btn sm" type="button" disabled={!custom.trim()} onClick={addCustom}><Plus size={13} /></button></div>
       </div>
+      <label className="small row" style={{ marginTop: 10, gap: 8 }}>Search in
+        <select className="input" style={{ width: 'auto' }} value={state.settings.paperSource} onChange={e => dispatch({ type: 'settings', patch: { paperSource: e.target.value } })}>{Object.entries(SOURCES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+      </label>
       <div className="row wrap" style={{ marginTop: 14 }}>
         <button className="btn violet" data-tour="build" disabled={!picked.length || !!busy} onClick={build}>{busy ? <span className="spinner" /> : <Sparkles size={14} />} Build my starter library{picked.length ? ` (${picked.length * PER_TOPIC} papers)` : ''}</button>
         <button className="btn" data-tour="upload" onClick={() => { saveName(); setImporting(true) }}><Upload size={14} /> Upload PDFs / import</button>
