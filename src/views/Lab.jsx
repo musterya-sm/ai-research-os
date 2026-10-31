@@ -6,6 +6,7 @@ import { download } from '../lib/exporter.js'
 import { copyShare, shareProject } from '../lib/share.js'
 import { KeyNudge } from '../components/KeySetup.jsx'
 import { hasAI } from '../lib/ai.js'
+import { useJob, runJob, setProblems } from '../lib/jobs.js'
 import { search } from '../lib/nlp.js'
 import { generateCodebase, fixFiles, localCodebase, toNotebook, zip, checkCode, parseResults } from '../lib/autobuild.js'
 import { extractSpec, planForPaper, specForIdea, planForIdea, specPrompt, ideaPrompt, parseAI, scaffold, planMarkdown, delta, verdict, localMentor, mentorPrompt, normSpec, rid } from '../lib/reproduce.js'
@@ -285,40 +286,41 @@ function Build({ project, paper, save, setSpec }) {
   const { state } = useStore()
   const live = hasAI(state.settings)
   const b = project.build
-  const [busy, setBusy] = useState(false)
-  const [log, setLog] = useState([])
+  const job = useJob(project.id)
+  const busy = !!job?.busy, log = job?.log || [], problems = job?.problems ?? null
   const [file, setFile] = useState('run.py')
-  const [problems, setProblems] = useState(null)
   const [paste, setPaste] = useState('')
-  const say = t => setLog(l => [...l, t])
   const files = b?.files || {}
   const cur = files[file] != null ? file : Object.keys(files)[0]
   const slug = project.title.replace(/[^\w]+/g, '-').toLowerCase().slice(0, 40).replace(/-$/, '')
+  const short = project.title.slice(0, 50)
 
-  async function generate() {
+  // Python check inside a running job (used after generating and after fixing).
+  async function checkIn(say, fs) {
+    say('Loading Python in your browser…')
+    const p = await checkCode(fs); setProblems(project.id, p)
+    say(Object.keys(p).length ? `Found problems in ${Object.keys(p).length} file(s)` : 'All files parse and every local import resolves ✓')
+  }
+  function generate() {
     if (b && !confirm('Replace the current codebase?')) return
-    setBusy(true); setLog([]); setProblems(null)
-    try {
-      if (!live) { save({ build: { ...localCodebase(project), at: Date.now() } }); say('Template generated locally. Add a Claude API key in Settings to have the full implementation written for you.'); return }
+    runJob(project.id, short, async say => {
+      if (!live) { save({ build: { ...localCodebase(project), at: Date.now() } }); say('Template generated locally. Add a Claude or OpenAI key to have the full implementation written for you.'); return }
+      say('This keeps running if you switch screens. Keep this tab open.')
       const out = await generateCodebase({ settings: state.settings, project, paper, log: say, save: part => save({ build: { ...part, at: Date.now(), partial: true } }) })
       save({ build: { ...out, at: Date.now() } })
       say('Done. Checking the code…')
-      await check(out.files)
-    } catch (e) { say(`Stopped: ${e.message}`) } finally { setBusy(false) }
+      await checkIn(say, out.files)
+    }, { reset: true, done: `Codebase for “${short}” is ready. Open it in the Reproduce Lab.` })
   }
-  async function check(fs = files) {
-    setBusy(true)
-    try { say('Loading Python in your browser…'); const p = await checkCode(fs); setProblems(p); say(Object.keys(p).length ? `Found problems in ${Object.keys(p).length} file(s)` : 'All files parse and every local import resolves ✓') } catch (e) { say(e.message) } finally { setBusy(false) }
-  }
-  async function fix(extra) {
+  const check = (fs = files) => runJob(project.id, short, say => checkIn(say, fs))
+  function fix(extra) {
     const probs = extra || problems
-    if (!live) return toast('Fixing code needs a Claude API key (Settings)')
-    setBusy(true)
-    try {
+    if (!live) return toast('Fixing code needs a Claude or OpenAI key (Settings)')
+    runJob(project.id, short, async say => {
       const out = await fixFiles({ settings: state.settings, project, paper, build: b, problems: probs, log: say })
       save({ build: { ...b, files: out, at: Date.now() } }); say('Fixed. Re-checking…')
-      setBusy(false); await check(out)
-    } catch (e) { say(e.message) } finally { setBusy(false) }
+      await checkIn(say, out)
+    }, { done: `Fixes for “${short}” are done.` })
   }
   function importResults() {
     const r = parseResults(paste)
@@ -390,9 +392,9 @@ function SpecPanel({ spec, setSpec, paper }) {
     <div className="stack" data-tour="lab-spec" style={{ alignSelf: 'start' }}>
       <div className="card">
         <h3>What you need</h3>
-        {!!spec.datasets.length && <><div className="label">Datasets</div><div style={{ marginBottom: 8 }}>{spec.datasets.map(d => <span key={d} className="tag">{d}</span>)}</div></>}
-        {!!spec.models?.length && <><div className="label">Models</div><div style={{ marginBottom: 8 }}>{spec.models.map(d => <span key={d} className="tag">{d}</span>)}</div></>}
-        {!!spec.components.length && <><div className="label">To build</div><div style={{ marginBottom: 8 }}>{spec.components.map(d => <span key={d} className="tag lime">{d}</span>)}</div></>}
+        {!!spec.datasets.length && <><div className="label">Datasets</div><div style={{ marginBottom: 8 }}>{spec.datasets.map(d => <span key={d} className="tag wrap">{d}</span>)}</div></>}
+        {!!spec.models?.length && <><div className="label">Models</div><div style={{ marginBottom: 8 }}>{spec.models.map(d => <span key={d} className="tag wrap">{d}</span>)}</div></>}
+        {!!spec.components.length && <><div className="label">To build</div><div style={{ marginBottom: 8 }}>{spec.components.map(d => <span key={d} className="tag lime wrap">{d}</span>)}</div></>}
         {spec.compute && <><div className="label">Compute</div><p className="small" style={{ marginTop: 2 }}>{spec.compute}</p></>}
         {!!spec.code.length && <><div className="label">Code</div>{spec.code.map(u => <div key={u} className="small"><a href={/^https:\/\//i.test(u) ? u : undefined} target="_blank" rel="noreferrer"><Github size={12} /> {u.replace(/^https?:\/\/(www\.)?github\.com\//, '')}</a></div>)}</>}
         {spec.baselines && <><div className="label" style={{ marginTop: 8 }}>Baselines</div><p className="small" style={{ marginTop: 2 }}>{spec.baselines}</p></>}
@@ -403,10 +405,13 @@ function SpecPanel({ spec, setSpec, paper }) {
         <div className="row between"><h3 style={{ margin: 0 }}>Settings</h3><button className="btn sm" onClick={() => setSpec({ hparams: [...spec.hparams, { name: 'setting', value: '', evidence: '' }] })}><Plus size={13} /></button></div>
         {!spec.hparams.length && <p className="muted small">None found in the text. Add the ones you choose so they are recorded.</p>}
         {spec.hparams.map((h, i) => (
-          <div key={i} className="row" style={{ marginTop: 6 }} title={h.evidence || 'Set by you'}>
-            <input className="input small grow" value={h.name} onChange={e => setH(i, { name: e.target.value })} />
-            <input className="input small mono" style={{ width: 90 }} value={h.value} onChange={e => setH(i, { value: e.target.value, evidence: h.evidence && e.target.value !== h.value ? '' : h.evidence })} />
-            <span className="tag" style={{ background: h.evidence ? 'var(--lime)' : 'var(--panel)', color: h.evidence ? '#0d0d0d' : null }}>{h.evidence ? 'paper' : 'you'}</span>
+          <div key={i} className="hp-row" title={h.evidence || 'Set by you'}>
+            <input className="input small" aria-label="Setting" value={h.name} onChange={e => setH(i, { name: e.target.value })} />
+            <div className="row" style={{ gap: 6 }}>
+              <input className="input small mono grow" aria-label={`Value for ${h.name}`} placeholder="choose a value" value={h.value} onChange={e => setH(i, { value: e.target.value, evidence: h.evidence && e.target.value !== h.value ? '' : h.evidence })} />
+              <span className="tag" style={{ background: h.evidence ? 'var(--lime)' : 'var(--panel)', color: h.evidence ? '#0d0d0d' : null, margin: 0 }}>{h.evidence ? 'paper' : 'you'}</span>
+              <button className="star" title="Remove setting" aria-label={`Remove ${h.name}`} onClick={() => setSpec({ hparams: spec.hparams.filter((_, j) => j !== i) })}><Trash2 size={12} /></button>
+            </div>
           </div>))}
       </div>
       {!!spec.missing.length && <div className="card" style={{ borderColor: '#f59e0b' }}>

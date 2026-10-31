@@ -30,11 +30,12 @@ export function normSpec(x = {}) {
   const list = v => (Array.isArray(v) ? v : [])
   const txt = v => (typeof v === 'string' ? v : '')
   return {
-    ...x, summary: txt(x.summary), compute: txt(x.compute), baselines: txt(x.baselines), training: !!x.training,
-    ...Object.fromEntries(['components', 'datasets', 'models', 'missing'].map(k => [k, list(x[k]).map(String)])),
+    ...x, summary: txt(x.summary), compute: isFiller(x.compute) ? '' : txt(x.compute), baselines: isFiller(x.baselines) ? '' : txt(x.baselines), training: !!x.training,
+    ...Object.fromEntries(['components', 'datasets', 'models'].map(k => [k, list(x[k]).map(String).filter(v => !isFiller(v))])),
+    missing: list(x.missing).map(String),
     // Code links come from model output or a synced workspace: only plain https GitHub repo URLs are kept.
     code: list(x.code).map(String).filter(u => /^https:\/\/(www\.)?github\.com\/[\w.-]+\/[\w.-]+\/?$/i.test(u)),
-    hparams: list(x.hparams).filter(h => h && typeof h === 'object').map(h => ({ name: txt(h.name), value: txt(h.value), evidence: txt(h.evidence) })),
+    hparams: list(x.hparams).filter(h => h && typeof h === 'object').map(h => isFiller(h.value) ? { name: txt(h.name), value: '', evidence: '' } : { name: txt(h.name), value: txt(h.value), evidence: txt(h.evidence) }),
     metrics: list(x.metrics).filter(m => m && typeof m === 'object').map(m => ({ name: txt(m.name), paper: txt(m.paper), mine: txt(m.mine) })),
     related: list(x.related).filter(r => r && typeof r.id === 'string'),
   }
@@ -175,10 +176,22 @@ Use 8-10 steps from sharpening the hypothesis to a minimal experiment that could
 }
 
 // Merges model JSON over the local spec so a partial answer still leaves a full project.
+// Models often fill unknowns with "Not mentioned in the abstract", "unspecified" and the like: those are gaps, not values.
+const FILLER = /^\s*(not\s+(explicitly\s+|clearly\s+)?(mentioned|specified|stated|given|reported|provided|described|available)|unspecified|unknown|n\/?a|none( given| specified)?|tbd|-+)\b/i
+export const isFiller = v => !String(v ?? '').trim() || FILLER.test(String(v))
+
 export function parseAI(out, spec, steps) {
   try {
     const j = JSON.parse(out.match(/\{[\s\S]*\}/)[0])
     const list = v => (Array.isArray(v) ? v : [])
+    const gaps = []
+    for (const k of ['datasets', 'models', 'compute', 'baselines']) {
+      const v = j[k], bad = Array.isArray(v) ? v.length > 0 && v.every(isFiller) : typeof v === 'string' && isFiller(v)
+      if (bad) gaps.push(`${k[0].toUpperCase() + k.slice(1)} are not stated in the paper text available`)
+      if (Array.isArray(v)) j[k] = v.filter(x => !isFiller(x)); else if (typeof v === 'string' && isFiller(v)) delete j[k]
+    }
+    if (Array.isArray(j.hparams)) j.hparams = j.hparams.map(h => h && isFiller(h.value) ? (gaps.push(`No value given for ${h.name || 'a setting'}: choose one and record it`), { ...h, value: '', evidence: '' }) : h)
+    if (gaps.length) j.missing = [...new Set([...list(j.missing).map(String), ...gaps])]
     const s = {
       ...spec,
       ...Object.fromEntries(['summary', 'compute', 'baselines'].filter(k => typeof j[k] === 'string' && j[k]).map(k => [k, j[k]])),
